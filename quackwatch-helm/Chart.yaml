@@ -1,0 +1,9 @@
+apiVersion: v2
+name: quackwatch-helm
+description: A Helm chart for QuakeWatch earthquake monitoring application
+
+type: application
+
+version: 0.1.0
+
+appVersion: "1.0.3"

@@ -1,0 +1,67 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "QuackWatch-helm.fullname" . }}
+  labels: {{- include "QuackWatch-helm.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "QuackWatch-helm.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "QuackWatch-helm.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+      annotations:
+{{- with .Values.podAnnotations }}
+{{ toYaml . | nindent 8 }}
+{{- end }}
+    spec:
+{{- if .Values.image.pullSecrets }}
+      imagePullSecrets:
+{{- range .Values.image.pullSecrets }}
+        - name: {{ . }}
+{{- end }}
+{{- end }}
+{{- if .Values.securityContext.enabled }}
+      securityContext:
+        runAsNonRoot: {{ .Values.securityContext.runAsNonRoot }}
+        runAsUser: {{ .Values.securityContext.runAsUser }}
+{{- end }}
+      containers:
+        - name: {{ include "QuackWatch-helm.name" . }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+{{- range .Values.env }}
+            - name: {{ .name }}
+              value: {{ .value | quote }}
+{{- end }}
+{{- if .Values.envFromConfigMap }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "QuackWatch-helm.fullname" . }}-env
+{{- end }}
+{{- if .Values.envFromSecret }}
+            - secretRef:
+                name: {{ include "QuackWatch-helm.fullname" . }}-secret
+{{- end }}
+{{- if .Values.containerSecurityContext }}
+          securityContext:
+{{ toYaml .Values.containerSecurityContext | nindent 12 }}
+{{- end }}
+          resources:
+{{ toYaml .Values.resources | nindent 12 }}
+          livenessProbe:
+{{ toYaml .Values.livenessProbe | nindent 12 }}
+          readinessProbe:
+{{ toYaml .Values.readinessProbe | nindent 12 }}
+      nodeSelector: {{- toYaml .Values.nodeSelector | nindent 8 }}
+      tolerations:  {{- toYaml .Values.tolerations | nindent 8 }}
+      affinity:     {{- toYaml .Values.affinity | nindent 8 }}

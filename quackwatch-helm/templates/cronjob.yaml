@@ -1,0 +1,33 @@
+{{- if .Values.cronJob.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "QuackWatch-helm.fullname" . }}-date-logger
+  labels:
+    {{- include "QuackWatch-helm.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.cronJob.schedule | quote }}
+  jobTemplate:
+    spec:
+      ttlSecondsAfterFinished: {{ .Values.cronJob.ttlSecondsAfterFinished }}
+      template:
+        spec:
+          containers:
+            - name: log-date
+              image: alpine
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  mkdir -p /logs;
+                  echo "$(date)" >> /logs/date.log;
+              volumeMounts:
+                - name: log-volume
+                  mountPath: /logs
+          restartPolicy: OnFailure
+          {{- if .Values.persistence.enabled }}
+          volumes:
+            - name: log-volume
+              persistentVolumeClaim:
+                claimName: {{ include "QuackWatch-helm.fullname" . }}-logs-pvc
+          {{- end }}
+{{- end }}

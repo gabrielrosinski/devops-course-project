@@ -1,0 +1,143 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: earthquake-config
+data:
+  earthquake.conf: |
+    APP_ENV=production
+    APP_VERSION=1.0.3
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: earthquake
+  labels:
+    app: earthquake
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: earthquake
+  template:
+    metadata:
+      labels:
+        app: earthquake
+    spec:
+      containers:
+      - name: earthquake
+        image: blaqr/earthquake:latest
+        imagePullPolicy: Always   
+        volumeMounts:
+        - name: earthquake-volume
+          mountPath: /data
+        ports:
+        - containerPort: 5000
+        env:
+        - name: API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: earthquake-secret
+              key: API_KEY
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi   
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 5000
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          failureThreshold: 3
+          timeoutSeconds: 2
+        readinessProbe:
+            httpGet:
+              path: /
+              port: 5000
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 3  
+
+      volumes:
+      - name: earthquake-volume
+        configMap:
+          name: earthquake-config
+          items:
+          - key: earthquake.conf
+            path: earthquake.conf
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: earthquake-service
+spec:
+  type: NodePort  
+  selector:
+    app: earthquake
+  ports:
+    - protocol: TCP
+      port: 5000
+      targetPort: 5000
+      nodePort: 32000
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: earthquake-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: earthquake
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 50
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: shared-logs-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: date-logger
+spec:
+  schedule: "* * * * *"  # Every 1 minutes
+  jobTemplate:
+    spec:
+      ttlSecondsAfterFinished: 300
+      template:
+        spec:
+          containers:
+            - name: log-date
+              image: alpine
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  mkdir -p /logs;
+                  echo "$(date)" >> /logs/date.log;
+              volumeMounts:
+                - name: log-volume
+                  mountPath: /logs
+          restartPolicy: OnFailure
+          volumes:
+            - name: log-volume
+              persistentVolumeClaim:
+                claimName: shared-logs-pvc
+

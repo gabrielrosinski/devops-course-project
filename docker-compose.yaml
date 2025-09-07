@@ -1,0 +1,14 @@
+services:
+  flask-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: blaqr/earthquake:latest   
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./logs:/var/log/flask-data # Map local 'data' directory to '/app/data' in container
+    environment:
+      FLASK_APP: app.py
+      FLASK_RUN_HOST: 0.0.0.0
+    restart: always

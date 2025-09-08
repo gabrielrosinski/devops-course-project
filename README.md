@@ -60,4 +60,9 @@ Opening service default/earthquake-service in default browser...
 ### Link to image on docker hub
 https://hub.docker.com/r/blaqr/earthquake
 
+### Helm Chart Repository
+```
+oci://ghcr.io/gabrielrosinski/quackwatch-helm
+```
+
 

@@ -1,0 +1,96 @@
+name: Helm Deployment Test
+
+on:
+  push:
+    branches: [ main, develop, feature/* ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+env:
+  REGISTRY: docker.io
+  IMAGE_NAME: blaqr/earthquake
+
+jobs:
+  helm-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements-test.txt
+        
+    - name: Start Minikube
+      uses: medyagh/setup-minikube@master
+      with:
+        minikube-version: 1.31.0
+        kubernetes-version: 1.28.0
+        driver: docker
+        start-args: --memory=4096 --cpus=2
+        
+    - name: Enable Minikube addons
+      run: |
+        minikube addons enable storage-provisioner
+        minikube addons enable default-storageclass
+        minikube addons enable metrics-server
+        
+    - name: Install Helm
+      uses: azure/setup-helm@v3
+      with:
+        version: '3.12.0'
+        
+    - name: Verify Kubernetes cluster
+      run: |
+        kubectl cluster-info
+        kubectl get nodes
+        kubectl get pods -A
+        
+    - name: Create Kubernetes secret (if needed)
+      run: |
+        if [ -f "earthquake-secret.yaml" ]; then
+          kubectl apply -f earthquake-secret.yaml
+        else
+          echo "Creating default secret"
+          kubectl create secret generic earthquake-secret --from-literal=API_KEY=test-api-key
+        fi
+        
+    - name: Run Helm deployment tests
+      run: |
+        python test_helm_deployment.py --release-name quakewatch-ci --namespace default
+        
+    - name: Run Helm deployment tests with pytest
+      run: |
+        CLEANUP=false pytest test_helm_deployment.py::TestHelmDeployment -v
+        
+    - name: Cleanup test deployment
+      if: always()
+      run: |
+        helm uninstall quakewatch-ci --ignore-not-found || true
+        helm uninstall quakewatch-pytest --ignore-not-found || true
+        kubectl delete secret earthquake-secret --ignore-not-found || true
+        
+    - name: Show cluster info on failure
+      if: failure()
+      run: |
+        echo "=== Cluster Info ==="
+        kubectl get all
+        echo "=== Pod Logs ==="
+        kubectl get pods -o wide
+        for pod in $(kubectl get pods -o jsonpath='{.items[*].metadata.name}'); do
+          echo "--- Logs for $pod ---"
+          kubectl logs $pod --tail=50 || true
+          echo "--- Describe $pod ---"
+          kubectl describe pod $pod || true
+        done
+        echo "=== Helm Releases ==="
+        helm list -A

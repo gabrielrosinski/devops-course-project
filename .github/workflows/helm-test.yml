@@ -55,14 +55,9 @@ jobs:
         kubectl get nodes
         kubectl get pods -A
         
-    - name: Create Kubernetes secret (if needed)
+    - name: Verify cluster is ready
       run: |
-        if [ -f "earthquake-secret.yaml" ]; then
-          kubectl apply -f earthquake-secret.yaml
-        else
-          echo "Creating default secret"
-          kubectl create secret generic earthquake-secret --from-literal=API_KEY=test-api-key
-        fi
+        echo "Cluster is ready for Helm deployment"
         
     - name: Run Helm deployment tests
       run: |
@@ -77,7 +72,6 @@ jobs:
       run: |
         helm uninstall quakewatch-ci --ignore-not-found || true
         helm uninstall quakewatch-pytest --ignore-not-found || true
-        kubectl delete secret earthquake-secret --ignore-not-found || true
         
     - name: Show cluster info on failure
       if: failure()

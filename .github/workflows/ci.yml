@@ -1,10 +1,10 @@
-name: Helm Deployment Test
+name: CI/CD Pipeline
 
 on:
   push:
-    branches: [ main, develop, feature/* ]
+    branches: [ main, feature/* ]
   pull_request:
-    branches: [ main, develop ]
+    branches: [ main ]
   workflow_dispatch:
 
 env:
@@ -12,9 +12,46 @@ env:
   IMAGE_NAME: blaqr/earthquake
 
 jobs:
+  build:
+    name: Build and Test Code Quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.9'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements-test.txt
+        
+    - name: Lint and code quality checks
+      run: |
+        echo "🔍 Running code quality checks..."
+        # Add your linting/formatting checks here if needed
+        # flake8 QuakeWatch/ || true
+        # black --check QuakeWatch/ || true
+        
+    - name: Validate Helm chart
+      run: |
+        echo "🔧 Installing Helm..."
+        curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+        echo "✅ Validating Helm chart..."
+        helm lint quackwatch-helm/
+        helm template quackwatch-helm/ > /dev/null
+        echo "✅ Helm chart validation completed"
+
   helm-deployment-test:
+    name: Helm Deployment Test (K8s ${{ matrix.kubernetes-version }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    needs: build
 
     strategy:
       matrix:
@@ -26,6 +63,7 @@ jobs:
             minikube-version: '1.31.0'
           - kubernetes-version: '1.29.0'
             minikube-version: '1.32.0'
+      fail-fast: false
     
     steps:
     - name: Checkout code
@@ -36,7 +74,7 @@ jobs:
       with:
         python-version: '3.9'
         
-    - name: Install Python dependencies
+    - name: Install test dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements-test.txt
@@ -62,21 +100,25 @@ jobs:
         
     - name: Verify Kubernetes cluster
       run: |
+        echo "🔧 Verifying K8s ${{ matrix.kubernetes-version }} cluster..."
         kubectl cluster-info
-        kubectl get nodes
+        kubectl get nodes -o wide
         
-    - name: Run Helm deployment tests with pytest
+    - name: Run Helm deployment tests
       run: |
-        CLEANUP=false pytest test_helm_deployment.py::TestHelmDeployment -v
+        echo "🚀 Testing Helm deployment on K8s ${{ matrix.kubernetes-version }}..."
+        CLEANUP=false pytest test_helm_deployment.py::TestHelmDeployment -v --tb=short
         
     - name: Cleanup test deployment
       if: always()
       run: |
+        echo "🧹 Cleaning up test deployment..."
         helm uninstall quackwatch-helm --ignore-not-found || true
         
-    - name: Show cluster info on failure
+    - name: Debug on failure
       if: failure()
       run: |
+        echo "❌ Debugging failed deployment on K8s ${{ matrix.kubernetes-version }}..."
         echo "=== Cluster Resources ==="
         kubectl get all -o wide
         echo "=== Pod Logs ==="

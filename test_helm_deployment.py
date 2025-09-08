@@ -273,7 +273,7 @@ class TestHelmDeployment:
     
     @classmethod
     def setup_class(cls):
-        cls.test_suite = HelmDeploymentTest("quakewatch-pytest", "default")
+        cls.test_suite = HelmDeploymentTest("quackwatch-helm", "default")
     
     @classmethod
     def teardown_class(cls):

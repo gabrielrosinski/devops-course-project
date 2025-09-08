@@ -71,7 +71,6 @@ jobs:
       if: always()
       run: |
         helm uninstall quackwatch-helm --ignore-not-found || true
-        helm uninstall quakewatch-pytest --ignore-not-found || true
         
     - name: Show cluster info on failure
       if: failure()

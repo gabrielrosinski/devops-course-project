@@ -54,8 +54,8 @@ class HelmDeploymentTest:
         """Test deployment status and readiness"""
         print("🔹 Checking deployment status...")
         
-        # Get deployment status
-        cmd = ["kubectl", "get", "deployment", f"{self.release_name}", 
+        # Get deployment status - deployment name is always quackwatch-helm
+        cmd = ["kubectl", "get", "deployment", "quackwatch-helm", 
                "-n", self.namespace, "-o", "json"]
         result = self.run_command(cmd)
         
@@ -75,7 +75,7 @@ class HelmDeploymentTest:
         # Wait for pods to be running
         max_attempts = 30
         for attempt in range(max_attempts):
-            cmd = ["kubectl", "get", "pods", "-l", f"app.kubernetes.io/instance={self.release_name}",
+            cmd = ["kubectl", "get", "pods", "-l", "app.kubernetes.io/instance=quackwatch-helm",
                    "-n", self.namespace, "-o", "json"]
             result = self.run_command(cmd)
             pods = json.loads(result.stdout)
@@ -103,7 +103,7 @@ class HelmDeploymentTest:
         """Test that service is created and accessible"""
         print("🔹 Checking service...")
         
-        cmd = ["kubectl", "get", "service", f"{self.release_name}",
+        cmd = ["kubectl", "get", "service", "quackwatch-helm",
                "-n", self.namespace, "-o", "json"]
         result = self.run_command(cmd)
         
@@ -118,7 +118,7 @@ class HelmDeploymentTest:
         print("🔹 Verifying ConfigMap mount...")
         
         # Get first pod
-        cmd = ["kubectl", "get", "pods", "-l", f"app.kubernetes.io/instance={self.release_name}",
+        cmd = ["kubectl", "get", "pods", "-l", "app.kubernetes.io/instance=quackwatch-helm",
                "-n", self.namespace, "-o", "jsonpath={.items[0].metadata.name}"]
         result = self.run_command(cmd)
         pod_name = result.stdout.strip()
@@ -148,7 +148,7 @@ class HelmDeploymentTest:
         print("🔹 Testing application health...")
         
         # Get pod name
-        cmd = ["kubectl", "get", "pods", "-l", f"app.kubernetes.io/instance={self.release_name}",
+        cmd = ["kubectl", "get", "pods", "-l", "app.kubernetes.io/instance=quackwatch-helm",
                "-n", self.namespace, "-o", "jsonpath={.items[0].metadata.name}"]
         result = self.run_command(cmd)
         pod_name = result.stdout.strip()
@@ -195,7 +195,7 @@ class HelmDeploymentTest:
         """Test Horizontal Pod Autoscaler exists"""
         print("🔹 Checking HPA...")
         
-        cmd = ["kubectl", "get", "hpa", f"{self.release_name}",
+        cmd = ["kubectl", "get", "hpa", "quackwatch-helm",
                "-n", self.namespace, "-o", "json"]
         result = self.run_command(cmd, check=False)
         

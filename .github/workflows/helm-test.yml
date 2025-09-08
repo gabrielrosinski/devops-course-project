@@ -61,7 +61,7 @@ jobs:
         
     - name: Run Helm deployment tests
       run: |
-        python test_helm_deployment.py --release-name quakewatch-ci --namespace default
+        python test_helm_deployment.py --release-name quackwatch-helm --namespace default
         
     - name: Run Helm deployment tests with pytest
       run: |
@@ -70,7 +70,7 @@ jobs:
     - name: Cleanup test deployment
       if: always()
       run: |
-        helm uninstall quakewatch-ci --ignore-not-found || true
+        helm uninstall quackwatch-helm --ignore-not-found || true
         helm uninstall quakewatch-pytest --ignore-not-found || true
         
     - name: Show cluster info on failure

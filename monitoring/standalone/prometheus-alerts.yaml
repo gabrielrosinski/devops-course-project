@@ -1,0 +1,102 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: quakewatch-alerts
+  namespace: monitoring
+  labels:
+    release: kube-prometheus-stack  # Required for Prometheus to discover it
+spec:
+  groups:
+  - name: quakewatch.rules
+    interval: 30s  # How often to evaluate rules
+    rules:
+
+    # Alert 1: High Error Rate
+    - alert: QuakeWatchHighErrorRate
+      expr: |
+        sum(rate(flask_http_request_total{job="earthquake-app-quackwatch-helm",status=~"5.."}[5m]))
+        /
+        sum(rate(flask_http_request_total{job="earthquake-app-quackwatch-helm"}[5m]))
+        > 0.05
+      for: 2m  # Alert fires if condition is true for 2 minutes
+      labels:
+        severity: critical
+        app: quakewatch
+      annotations:
+        summary: "High error rate detected in QuakeWatch"
+        description: "Error rate is {{ $value | humanizePercentage }} (threshold: 5%)"
+
+    # Alert 2: Application Down
+    - alert: QuakeWatchDown
+      expr: up{job="earthquake-app-quackwatch-helm"} == 0
+      for: 1m
+      labels:
+        severity: critical
+        app: quakewatch
+      annotations:
+        summary: "QuakeWatch application is down"
+        description: "QuakeWatch pod {{ $labels.instance }} has been down for more than 1 minute"
+
+    # Alert 3: High Response Time
+    - alert: QuakeWatchSlowResponse
+      expr: |
+        histogram_quantile(0.95,
+          rate(flask_http_request_duration_seconds_bucket{job="earthquake-app-quackwatch-helm"}[5m])
+        ) > 2
+      for: 5m
+      labels:
+        severity: warning
+        app: quakewatch
+      annotations:
+        summary: "QuakeWatch responding slowly"
+        description: "95th percentile response time is {{ $value }}s (threshold: 2s)"
+
+    # Alert 4: Pod Restarts
+    - alert: QuakeWatchPodRestarting
+      expr: rate(kube_pod_container_status_restarts_total{namespace="default",pod=~"earthquake-app.*"}[15m]) > 0
+      for: 5m
+      labels:
+        severity: warning
+        app: quakewatch
+      annotations:
+        summary: "QuakeWatch pod is restarting frequently"
+        description: "Pod {{ $labels.pod }} has restarted {{ $value }} times in the last 15 minutes"
+
+    # Alert 5: No Traffic
+    - alert: QuakeWatchNoTraffic
+      expr: |
+        sum(rate(flask_http_request_total{job="earthquake-app-quackwatch-helm"}[5m])) == 0
+      for: 10m
+      labels:
+        severity: warning
+        app: quakewatch
+      annotations:
+        summary: "QuakeWatch receiving no traffic"
+        description: "No requests received in the last 10 minutes"
+
+    # Alert 6: High Memory Usage
+    - alert: QuakeWatchHighMemory
+      expr: |
+        container_memory_usage_bytes{namespace="default",pod=~"earthquake-app.*"}
+        /
+        container_spec_memory_limit_bytes{namespace="default",pod=~"earthquake-app.*"}
+        > 0.9
+      for: 5m
+      labels:
+        severity: warning
+        app: quakewatch
+      annotations:
+        summary: "QuakeWatch pod memory usage is high"
+        description: "Pod {{ $labels.pod }} memory usage is at {{ $value | humanizePercentage }} (threshold: 90%)"
+
+    # Alert 7: High CPU Usage
+    - alert: QuakeWatchHighCPU
+      expr: |
+        rate(container_cpu_usage_seconds_total{namespace="default",pod=~"earthquake-app.*"}[5m]) > 0.8
+      for: 5m
+      labels:
+        severity: warning
+        app: quakewatch
+      annotations:
+        summary: "QuakeWatch pod CPU usage is high"
+        description: "Pod {{ $labels.pod }} CPU usage is {{ $value | humanize }} cores (threshold: 0.8)"

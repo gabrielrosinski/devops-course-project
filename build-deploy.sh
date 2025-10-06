@@ -32,25 +32,43 @@ if ! sudo systemctl is-active --quiet k3s; then
   sudo systemctl start k3s
 fi
 
-# Wait for k3s to be ready using kubectl wait
-echo "⏳ Waiting for k3s to be ready..."
-sudo k3s kubectl wait --for=condition=ready node --all --timeout=60s || {
-  echo "❌ k3s failed to become ready"
+# Always wait for API server to be ready (even if service was already running)
+echo "⏳ Waiting for k3s API server to be ready..."
+MAX_RETRIES=30
+RETRY_COUNT=0
+while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+  if sudo k3s kubectl get --raw /readyz &>/dev/null; then
+    echo "✅ k3s API server is responding"
+    break
+  fi
+  RETRY_COUNT=$((RETRY_COUNT + 1))
+  sleep 2
+done
+
+if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
+  echo "❌ k3s API server failed to start after ${MAX_RETRIES} attempts"
   exit 1
-}
+fi
 
-echo "✅ k3s is running"
-
+# Setup kubectl configuration immediately after API server is ready
 echo "🔧 Setting up kubectl configuration..."
-# Make kubeconfig permanent by copying to default kubectl location
 mkdir -p ~/.kube
 sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
 sudo chown $USER ~/.kube/config
 sudo chmod 644 /etc/rancher/k3s/k3s.yaml
 
-# Also export for this script session
+# Export for this script session
 export KUBECONFIG=~/.kube/config
 echo "✅ kubectl configured - will work in all terminal sessions"
+
+# Wait for k3s nodes to be ready (now using regular kubectl with KUBECONFIG set)
+echo "⏳ Waiting for k3s nodes to be ready..."
+kubectl wait --for=condition=ready node --all --timeout=60s || {
+  echo "❌ k3s nodes failed to become ready"
+  exit 1
+}
+
+echo "✅ k3s is running"
 
 echo "🔧 Configuring k3s components..."
 # k3s includes local-path storage provisioner and default storage class by default
@@ -96,6 +114,14 @@ else
   echo "✅ kube-prometheus-stack already installed, skipping"
 fi
 
+echo "📊 Applying monitoring resources..."
+if [ -d "monitoring/standalone" ]; then
+  kubectl apply -f monitoring/standalone/
+  echo "✅ All monitoring resources applied (ServiceMonitor, alerts, dashboard)"
+else
+  echo "⚠️  monitoring/standalone/ directory not found, skipping"
+fi
+
 echo "🔧 Installing ArgoCD..."
 # Check if ArgoCD is already installed
 if ! kubectl get namespace argocd &> /dev/null; then
@@ -114,7 +140,7 @@ else
 fi
 
 echo "📄 Deploying application via ArgoCD..."
-kubectl apply -f argocd/argocd.yaml
+kubectl apply --validate=false -f argocd/argocd.yaml
 
 echo "⏳ Waiting for ArgoCD to sync and deploy the application..."
 # Wait for ArgoCD application to be created
@@ -131,6 +157,24 @@ kubectl rollout status deployment/earthquake-app-quackwatch-helm --timeout=180s 
 }
 
 echo "🌐 Setting up service access..."
+
+# Wait for service to exist before port-forwarding
+echo "⏳ Waiting for service to be created..."
+RETRY_COUNT=0
+while [ $RETRY_COUNT -lt 30 ]; do
+  if kubectl get service/earthquake-app-quackwatch-helm &>/dev/null; then
+    echo "✅ Service is ready"
+    break
+  fi
+  RETRY_COUNT=$((RETRY_COUNT + 1))
+  sleep 2
+done
+
+if [ $RETRY_COUNT -eq 30 ]; then
+  echo "❌ Service not found after 60 seconds"
+  echo "   Check ArgoCD sync status: kubectl get application earthquake-app -n argocd"
+  exit 1
+fi
 
 # Kill any existing port-forward on port 8080
 pkill -f "port-forward.*earthquake-app" 2>/dev/null || true
@@ -207,6 +251,16 @@ fi
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "ℹ️  To access Grafana UI, run: kubectl port-forward svc/kube-prometheus-stack-grafana -n monitoring 3000:80"
 echo "   Then navigate to: http://localhost:3000"
+echo ""
+echo "ℹ️  To access Prometheus UI, run: kubectl port-forward svc/kube-prometheus-stack-prometheus -n monitoring 9090:9090"
+echo "   Then navigate to: http://localhost:9090"
+echo ""
+echo "ℹ️  To access Alertmanager UI, run: kubectl port-forward svc/kube-prometheus-stack-alertmanager -n monitoring 9093:9093"
+echo "   Then navigate to: http://localhost:9093"
+echo ""
+echo "💡 Alert Configuration:"
+echo "   - 7 alert rules are active (view in Prometheus UI → Alerts)"
+echo "   - To configure email notifications, see: monitoring/helm-values/alertmanager-values.yaml"
 echo ""
 
 # Open in browser (works in WSL with Chrome installed)

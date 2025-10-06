@@ -56,10 +56,11 @@ sudo apt install google-chrome-stable -y
 This automated script will:
 1. Install k3s if not already present
 2. Deploy Prometheus & Grafana monitoring stack
-3. Deploy ArgoCD for GitOps continuous deployment
-4. Apply all Kubernetes resources via Helm
-5. Set up port-forwarding to http://localhost:8080
-6. Display ArgoCD and Grafana credentials for UI access
+3. Apply monitoring resources (ServiceMonitor, alerts, dashboards)
+4. Deploy ArgoCD for GitOps continuous deployment
+5. Apply all Kubernetes resources via Helm
+6. Set up port-forwarding to http://localhost:8080
+7. Display ArgoCD, Grafana, and Alertmanager access info
 
 ---
 
@@ -234,7 +235,9 @@ The deployment includes a complete monitoring stack with Prometheus and Grafana 
 **Automatically installed components:**
 - **Prometheus**: Metrics collection and storage
 - **Grafana**: Metrics visualization and dashboards
+- **Alertmanager**: Alert routing and notifications
 - **ServiceMonitor**: Automatic metrics scraping from QuakeWatch app
+- **Alert Rules**: 7 pre-configured alerts for app monitoring
 - **Pre-configured Dashboard**: QuakeWatch application metrics
 
 ### Accessing Grafana
@@ -287,6 +290,74 @@ kubectl port-forward svc/kube-prometheus-stack-prometheus -n monitoring 9090:909
 ```
 
 Navigate to: **http://localhost:9090**
+
+---
+
+### Alerting with Prometheus & Alertmanager
+
+The deployment includes **7 pre-configured alert rules** that monitor QuakeWatch application health and performance.
+
+**Alert Rules:**
+
+| Alert Name | Severity | Threshold | Description |
+|------------|----------|-----------|-------------|
+| QuakeWatchHighErrorRate | Critical | 5% error rate for 2m | High HTTP 5xx errors |
+| QuakeWatchDown | Critical | Up = 0 for 1m | Application unreachable |
+| QuakeWatchSlowResponse | Warning | p95 > 2s for 5m | Slow response times |
+| QuakeWatchPodRestarting | Warning | Restarts > 0 for 5m | Pod restart loop |
+| QuakeWatchNoTraffic | Warning | 0 req/s for 10m | No incoming traffic |
+| QuakeWatchHighMemory | Warning | Memory > 90% for 5m | High memory usage |
+| QuakeWatchHighCPU | Warning | CPU > 0.8 cores for 5m | High CPU usage |
+
+**View Active Alerts:**
+
+```bash
+# Prometheus UI - View alert rules and status
+kubectl port-forward svc/kube-prometheus-stack-prometheus -n monitoring 9090:9090
+# Navigate to: http://localhost:9090/alerts
+
+# Alertmanager UI - View firing alerts and silences
+kubectl port-forward svc/kube-prometheus-stack-alertmanager -n monitoring 9093:9093
+# Navigate to: http://localhost:9093
+```
+
+**Configure Email Notifications:**
+
+Email notifications are configured via Helm values. Edit the configuration file:
+
+```bash
+nano monitoring/helm-values/alertmanager-values.yaml
+```
+
+Update SMTP settings and email addresses, then apply:
+
+```bash
+helm upgrade kube-prometheus-stack prometheus-community/kube-prometheus-stack \
+  --namespace monitoring \
+  --values monitoring/helm-values/alertmanager-values.yaml \
+  --reuse-values
+
+# Restart Alertmanager to load new config
+kubectl rollout restart statefulset/alertmanager-kube-prometheus-stack-alertmanager -n monitoring
+```
+
+**Test Alerts:**
+
+Trigger a test alert by scaling down the application:
+
+```bash
+# Scale to 0 - QuakeWatchDown alert should fire after 1 minute
+kubectl scale deployment earthquake-app-quackwatch-helm -n default --replicas=0
+
+# Check alert status
+kubectl port-forward svc/kube-prometheus-stack-prometheus -n monitoring 9090:9090
+# View at: http://localhost:9090/alerts
+
+# Scale back up
+kubectl scale deployment earthquake-app-quackwatch-helm -n default --replicas=3
+```
+
+---
 
 ### Health Checks
 The application includes comprehensive health monitoring:

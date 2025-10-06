@@ -1,0 +1,106 @@
+# Helm values file to configure Alertmanager email notifications
+# Apply with:
+# helm upgrade kube-prometheus-stack prometheus-community/kube-prometheus-stack \
+#   --namespace monitoring \
+#   --values monitoring/alertmanager-helm-values.yaml \
+#   --reuse-values
+
+alertmanager:
+  config:
+    global:
+      resolve_timeout: 5m
+      # SMTP configuration - UPDATE THESE VALUES
+      smtp_from: 'alertmanager@quakewatch.com'
+      smtp_smarthost: 'smtp.gmail.com:587'
+      smtp_auth_username: 'your-email@gmail.com'
+      smtp_auth_password: 'your-app-password'
+      smtp_require_tls: true
+
+    # Main routing tree
+    route:
+      receiver: 'email-default'
+      group_by: ['alertname', 'severity', 'app']
+      group_wait: 10s
+      group_interval: 5m
+      repeat_interval: 12h
+
+      routes:
+      # Critical alerts - immediate email notification
+      - match:
+          severity: critical
+        receiver: 'email-critical'
+        continue: true
+
+      # Warning alerts - less urgent
+      - match:
+          severity: warning
+        receiver: 'email-warnings'
+        group_wait: 30s
+
+    # Email notification receivers
+    receivers:
+    # Default receiver - all alerts
+    - name: 'email-default'
+      email_configs:
+      - to: 'devops-team@example.com'
+        headers:
+          Subject: '[QuakeWatch] {{ .GroupLabels.alertname }}'
+        html: |
+          <h3>QuakeWatch Alert</h3>
+          <table>
+          {{ range .Alerts }}
+          <tr><td><b>Alert:</b></td><td>{{ .Labels.alertname }}</td></tr>
+          <tr><td><b>Severity:</b></td><td>{{ .Labels.severity }}</td></tr>
+          <tr><td><b>Description:</b></td><td>{{ .Annotations.description }}</td></tr>
+          <tr><td colspan="2"><hr></td></tr>
+          {{ end }}
+          </table>
+        send_resolved: true
+
+    # Critical alerts receiver
+    - name: 'email-critical'
+      email_configs:
+      - to: 'oncall-team@example.com'
+        headers:
+          Subject: '[CRITICAL] QuakeWatch: {{ .GroupLabels.alertname }}'
+          Priority: 'urgent'
+        html: |
+          <h2 style="color: red;">🚨 CRITICAL ALERT 🚨</h2>
+          <p><b>Alert:</b> {{ .GroupLabels.alertname }}</p>
+          <p><b>App:</b> {{ .CommonLabels.app }}</p>
+          <p><b>Severity:</b> {{ .CommonLabels.severity }}</p>
+          <p><b>Summary:</b> {{ .CommonAnnotations.summary }}</p>
+          <p><b>Description:</b> {{ .CommonAnnotations.description }}</p>
+          <p><b>Firing Alerts:</b> {{ .Alerts.Firing | len }}</p>
+          <hr>
+          <p><a href="http://localhost:9090/alerts">View in Prometheus</a> | <a href="http://localhost:3000">View in Grafana</a></p>
+        send_resolved: true
+
+    # Warning alerts receiver
+    - name: 'email-warnings'
+      email_configs:
+      - to: 'devops-team@example.com'
+        headers:
+          Subject: '[WARNING] QuakeWatch: {{ .GroupLabels.alertname }}'
+        html: |
+          <h3>⚠️ Warning Alert</h3>
+          <p><b>Alert:</b> {{ .GroupLabels.alertname }}</p>
+          <p><b>Summary:</b> {{ .CommonAnnotations.summary }}</p>
+          <p><b>Description:</b> {{ .CommonAnnotations.description }}</p>
+        send_resolved: true
+
+    # Inhibition rules - suppress certain alerts when others are firing
+    inhibit_rules:
+    # Don't alert on pod issues if the whole app is down
+    - source_matchers:
+      - alertname = QuakeWatchDown
+      target_matchers:
+      - app = quakewatch
+      equal: ['app']
+
+    # Don't alert on slow response if app is down
+    - source_matchers:
+      - alertname = QuakeWatchDown
+      target_matchers:
+      - alertname = QuakeWatchSlowResponse
+      equal: ['app']

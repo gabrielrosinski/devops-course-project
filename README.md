@@ -13,6 +13,7 @@ A Flask-based web application that displays real-time and historical earthquake 
 - 🤖 Automated CI/CD with GitHub Actions
 - 📁 Structured logging to `/var/log/flask-data`
 - 📊 Health monitoring endpoints
+- 🔍 Prometheus metrics collection & Grafana dashboards
 
 ---
 
@@ -54,10 +55,11 @@ sudo apt install google-chrome-stable -y
 
 This automated script will:
 1. Install k3s if not already present
-2. Deploy ArgoCD for GitOps continuous deployment
-3. Apply all Kubernetes resources via Helm
-4. Set up port-forwarding to http://localhost:8080
-5. Display ArgoCD credentials for UI access
+2. Deploy Prometheus & Grafana monitoring stack
+3. Deploy ArgoCD for GitOps continuous deployment
+4. Apply all Kubernetes resources via Helm
+5. Set up port-forwarding to http://localhost:8080
+6. Display ArgoCD and Grafana credentials for UI access
 
 ---
 
@@ -223,7 +225,68 @@ The project uses GitHub Actions for automated testing across multiple Kubernetes
 
 ---
 
-## 📊 Monitoring & Scaling
+## 📊 Monitoring & Observability
+
+### Prometheus & Grafana Stack
+
+The deployment includes a complete monitoring stack with Prometheus and Grafana for real-time metrics and visualization.
+
+**Automatically installed components:**
+- **Prometheus**: Metrics collection and storage
+- **Grafana**: Metrics visualization and dashboards
+- **ServiceMonitor**: Automatic metrics scraping from QuakeWatch app
+- **Pre-configured Dashboard**: QuakeWatch application metrics
+
+### Accessing Grafana
+
+After deployment, Grafana credentials are displayed. To access the Grafana UI:
+
+```bash
+kubectl port-forward svc/kube-prometheus-stack-grafana -n monitoring 3000:80
+```
+
+Then navigate to: **http://localhost:3000**
+
+**Default Credentials:**
+- Username: `admin`
+- Password: (displayed during deployment or retrieve with command below)
+
+```bash
+kubectl get secret kube-prometheus-stack-grafana -n monitoring -o jsonpath="{.data.admin-password}" | base64 -d && echo
+```
+
+### QuakeWatch Dashboard
+
+The deployment includes a pre-configured dashboard showing:
+- **Request Rate**: HTTP requests per second
+- **Response Time**: p95 latency metrics
+- **Error Rate**: 4xx and 5xx errors
+- **Total Requests**: Cumulative request counter
+
+Find it in Grafana: **Dashboards → QuakeWatch Application Metrics**
+
+### Prometheus Metrics
+
+The Flask application exposes Prometheus metrics at `/metrics` endpoint:
+
+```bash
+# View raw metrics
+curl http://your-service:5000/metrics
+```
+
+**Available metrics:**
+- `flask_http_request_total` - Total HTTP requests by method and status
+- `flask_http_request_duration_seconds` - Request duration histogram
+- `flask_http_request_duration_seconds_sum` - Total request duration
+- `app_info` - Application metadata
+
+### Accessing Prometheus UI
+
+```bash
+kubectl port-forward svc/kube-prometheus-stack-prometheus -n monitoring 9090:9090
+```
+
+Navigate to: **http://localhost:9090**
 
 ### Health Checks
 The application includes comprehensive health monitoring:
@@ -262,8 +325,8 @@ docker pull blaqr/earthquake:latest
 ```
 .
 ├── QuakeWatch/                 # Flask application source
-│   ├── app.py                 # Application factory
-│   ├── dashboard.py           # Main dashboard blueprint  
+│   ├── app.py                 # Application factory with Prometheus metrics
+│   ├── dashboard.py           # Main dashboard blueprint
 │   ├── utils.py               # Helper functions
 │   ├── templates/             # Jinja2 templates
 │   └── static/                # Static assets
@@ -271,8 +334,16 @@ docker pull blaqr/earthquake:latest
 │   ├── Chart.yaml
 │   ├── values.yaml
 │   └── templates/             # Kubernetes manifests
+│       ├── deployment.yaml
+│       ├── service.yaml
+│       ├── servicemonitor.yaml      # Prometheus metrics scraping
+│       ├── grafana-dashboard.yaml   # Pre-configured Grafana dashboard
+│       └── ...
+├── argocd/                    # ArgoCD configuration
+│   └── argocd.yaml            # Application manifest
 ├── test_helm_deployment.py    # Deployment tests
 ├── .github/workflows/ci.yml   # CI/CD pipeline
+├── build-deploy.sh            # Automated deployment script
 └── docker-compose.yml         # Local development
 ```
 

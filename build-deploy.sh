@@ -69,6 +69,33 @@ else
   echo "✅ metrics-server already installed, skipping"
 fi
 
+echo "📊 Installing Prometheus & Grafana Monitoring Stack..."
+# Add Prometheus Helm repository
+if ! helm repo list | grep -q prometheus-community; then
+  echo "📦 Adding prometheus-community Helm repository..."
+  helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+  helm repo update
+else
+  echo "✅ prometheus-community repo already added"
+fi
+
+# Check if kube-prometheus-stack is already installed
+if ! kubectl get namespace monitoring &> /dev/null; then
+  echo "📦 Creating monitoring namespace..."
+  kubectl create namespace monitoring
+
+  echo "📥 Installing kube-prometheus-stack (Prometheus + Grafana)..."
+  helm install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
+    --namespace monitoring \
+    --set prometheus.prometheusSpec.podMonitorSelectorNilUsesHelmValues=false \
+    --set prometheus.prometheusSpec.serviceMonitorSelectorNilUsesHelmValues=false \
+    --wait --timeout=5m
+
+  echo "✅ Prometheus & Grafana installed successfully"
+else
+  echo "✅ kube-prometheus-stack already installed, skipping"
+fi
+
 echo "🔧 Installing ArgoCD..."
 # Check if ArgoCD is already installed
 if ! kubectl get namespace argocd &> /dev/null; then
@@ -161,6 +188,25 @@ fi
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "ℹ️  To access ArgoCD UI, run: kubectl port-forward svc/argocd-server -n argocd 8081:443"
 echo "   Then navigate to: https://localhost:8081"
+echo ""
+
+# Display Grafana credentials
+echo "📊 Grafana Monitoring:"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "Username: admin"
+
+# Get Grafana admin password
+GRAFANA_PASSWORD=$(kubectl get secret kube-prometheus-stack-grafana -n monitoring -o jsonpath="{.data.admin-password}" 2>/dev/null | base64 -d)
+
+if [ -n "$GRAFANA_PASSWORD" ]; then
+  echo "Password: $GRAFANA_PASSWORD"
+else
+  echo "Password: (not available yet - Grafana may still be starting)"
+fi
+
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "ℹ️  To access Grafana UI, run: kubectl port-forward svc/kube-prometheus-stack-grafana -n monitoring 3000:80"
+echo "   Then navigate to: http://localhost:3000"
 echo ""
 
 # Open in browser (works in WSL with Chrome installed)

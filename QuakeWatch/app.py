@@ -5,11 +5,16 @@ import os
 import logging
 from logging.handlers import RotatingFileHandler
 from flask import Flask
+from prometheus_flask_exporter import PrometheusMetrics
 from dashboard import dashboard_blueprint
 from utils import timestamp_to_str  # Import our custom filter
 
 def create_app():
     app = Flask(__name__)
+
+    # Initialize Prometheus metrics
+    metrics = PrometheusMetrics(app)
+    metrics.info('app_info', 'QuakeWatch Application Info', version='1.0.0')
 
     # -------------------------
     # Logging Configuration
@@ -46,4 +51,4 @@ def create_app():
 
 if __name__ == '__main__':
     app = create_app()
-    app.run(host='0.0.0.0', debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=True, use_reloader=False)

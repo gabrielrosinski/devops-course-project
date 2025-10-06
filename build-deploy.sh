@@ -41,9 +41,16 @@ sudo k3s kubectl wait --for=condition=ready node --all --timeout=60s || {
 
 echo "✅ k3s is running"
 
-# Set up kubeconfig for kubectl
-export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+echo "🔧 Setting up kubectl configuration..."
+# Make kubeconfig permanent by copying to default kubectl location
+mkdir -p ~/.kube
+sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
+sudo chown $USER ~/.kube/config
 sudo chmod 644 /etc/rancher/k3s/k3s.yaml
+
+# Also export for this script session
+export KUBECONFIG=~/.kube/config
+echo "✅ kubectl configured - will work in all terminal sessions"
 
 echo "🔧 Configuring k3s components..."
 # k3s includes local-path storage provisioner and default storage class by default
@@ -62,13 +69,38 @@ else
   echo "✅ metrics-server already installed, skipping"
 fi
 
-echo "📄 Deploying application with Helm..."
-helm upgrade --install earthquake-app ./quackwatch-helm
+echo "🔧 Installing ArgoCD..."
+# Check if ArgoCD is already installed
+if ! kubectl get namespace argocd &> /dev/null; then
+  echo "📦 Creating argocd namespace..."
+  kubectl create namespace argocd
 
+  echo "📥 Installing ArgoCD..."
+  kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+
+  echo "⏳ Waiting for ArgoCD to be ready..."
+  kubectl wait --for=condition=available --timeout=300s deployment/argocd-server -n argocd || {
+    echo "⚠️  ArgoCD may need more time to start"
+  }
+else
+  echo "✅ ArgoCD already installed, skipping"
+fi
+
+echo "📄 Deploying application via ArgoCD..."
+kubectl apply -f argocd/argocd.yaml
+
+echo "⏳ Waiting for ArgoCD to sync and deploy the application..."
+# Wait for ArgoCD application to be created
+kubectl wait --for=condition=Ready application/earthquake-app -n argocd --timeout=60s 2>/dev/null || echo "⚠️  ArgoCD Application created, syncing in progress..."
+
+# Give ArgoCD time to sync and deploy
 echo "⏳ Waiting for Earthquake deployment to become available..."
-kubectl rollout status deployment/earthquake-app-quackwatch-helm --timeout=180s || {
-  echo "❌ Deployment failed. Check pod logs with: kubectl logs -l app.kubernetes.io/instance=earthquake-app"
-  exit 1
+sleep 5  # Brief wait for ArgoCD to start syncing
+
+# Wait for the deployment to be available
+kubectl rollout status deployment/earthquake-app-quackwatch-helm --timeout=180s 2>/dev/null || {
+  echo "⚠️  Deployment is still syncing. Check ArgoCD UI for status."
+  echo "   You can check manually with: kubectl get pods"
 }
 
 echo "🌐 Setting up service access..."
@@ -110,6 +142,25 @@ fi
 SERVICE_URL="http://localhost:8080"
 echo "✅ Service available at: $SERVICE_URL"
 echo "ℹ️  Port-forward PID: $PORT_FORWARD_PID (to stop: kill $PORT_FORWARD_PID)"
+echo ""
+
+# Display ArgoCD credentials
+echo "🔐 ArgoCD Credentials:"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "Username: admin"
+
+# Get ArgoCD admin password
+ARGOCD_PASSWORD=$(kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath="{.data.password}" 2>/dev/null | base64 -d)
+
+if [ -n "$ARGOCD_PASSWORD" ]; then
+  echo "Password: $ARGOCD_PASSWORD"
+else
+  echo "Password: (not available yet - ArgoCD may still be starting)"
+fi
+
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "ℹ️  To access ArgoCD UI, run: kubectl port-forward svc/argocd-server -n argocd 8081:443"
+echo "   Then navigate to: https://localhost:8081"
 echo ""
 
 # Open in browser (works in WSL with Chrome installed)

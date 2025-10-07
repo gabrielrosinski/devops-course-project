@@ -4,7 +4,6 @@ kind: CronJob
 metadata:
   name: {{ include "QuackWatch-helm.fullname" . }}-date-logger
   annotations:
-    argocd.argoproj.io/sync-wave: "2"
   labels:
     {{- include "QuackWatch-helm.labels" . | nindent 4 }}
 spec:

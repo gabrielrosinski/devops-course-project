@@ -99,7 +99,7 @@ jobs:
         echo "🔧 Verifying k3s v${{ matrix.k3s-version }} cluster..."
         kubectl cluster-info
         kubectl get nodes -o wide
-        kubectl version --short
+        kubectl version
 
     - name: Run Helm deployment tests
       run: |

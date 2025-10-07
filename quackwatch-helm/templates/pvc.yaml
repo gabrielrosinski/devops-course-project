@@ -5,6 +5,7 @@ metadata:
   name: {{ include "QuackWatch-helm.fullname" . }}-logs-pvc
   annotations:
     argocd.argoproj.io/sync-wave: "0"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
   labels:
     {{- include "QuackWatch-helm.labels" . | nindent 4 }}
 spec:

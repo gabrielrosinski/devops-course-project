@@ -1,43 +1,140 @@
 #!/bin/bash
 set -e  # Stop on first error
 
+# Detect environment
+IS_WSL=false
+IS_MINGW=false
+
+# Check if running in Git Bash / MINGW (not supported for k3s)
+if [[ "$(uname -s)" == MINGW* ]] || [[ "$(uname -s)" == MSYS* ]]; then
+  IS_MINGW=true
+  echo "❌ ERROR: This script cannot run in Git Bash or MINGW"
+  echo ""
+  echo "k3s requires a Linux environment. Please run this script in:"
+  echo "  1. WSL2 (Windows Subsystem for Linux) - RECOMMENDED"
+  echo "  2. Native Linux (Ubuntu, Debian, etc.)"
+  echo ""
+  echo "To use WSL2:"
+  echo "  1. Open PowerShell as Administrator"
+  echo "  2. Run: wsl --install"
+  echo "  3. Restart your computer"
+  echo "  4. Open 'Ubuntu' from Start menu"
+  echo "  5. Run this script inside Ubuntu"
+  exit 1
+fi
+
+# Detect if running in WSL
+if grep -qEi "(Microsoft|WSL)" /proc/version 2>/dev/null || [[ -n "$WSL_DISTRO_NAME" ]]; then
+  IS_WSL=true
+  echo "🔍 Detected WSL environment"
+fi
+
 # Check if running in WSL and Google Chrome is not installed
-if [[ -n "$WSL_DISTRO_NAME" ]] && ! command -v google-chrome &> /dev/null; then
+if [[ "$IS_WSL" == "true" ]] && ! command -v google-chrome &> /dev/null; then
   echo "📦 Installing Google Chrome for WSL environment..."
-  
+
   # Download and add Google's signing key
   wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
 
   # Add Google Chrome repository
   echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
 
-  # Update package list
+  # Update package list and install Chrome
   sudo apt update
-
-  # Install Google Chrome
   sudo apt install -y google-chrome-stable
 fi
 
-echo "🚀 Checking k3s installation..."
-if ! command -v k3s &> /dev/null; then
-  echo "📦 k3s not found. Installing k3s..."
-  curl -sfL https://get.k3s.io | sh -
+echo "🐳 Checking Docker Engine status..."
+# Check if Docker is installed
+if ! command -v docker &> /dev/null; then
+  echo "📦 Docker not found. Installing Docker..."
+
+  # Update package index and install prerequisites
+  sudo apt-get update
+  sudo apt-get install -y ca-certificates curl gnupg lsb-release
+
+  # Add Docker's official GPG key
+  sudo mkdir -p /etc/apt/keyrings
+  curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+
+  # Set up the repository
+  echo \
+    "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+    $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+  # Install Docker Engine
+  sudo apt-get update
+  sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+  echo "✅ Docker installed successfully"
+fi
+
+# Check if Docker daemon is running
+if ! sudo docker info &> /dev/null; then
+  echo "🔧 Docker daemon is not running. Starting Docker..."
+
+  # Start Docker service
+  if command -v systemctl &> /dev/null; then
+    sudo systemctl start docker
+    sudo systemctl enable docker
+  elif command -v service &> /dev/null; then
+    sudo service docker start
+  else
+    echo "❌ Unable to start Docker. Please start Docker manually."
+    exit 1
+  fi
+
+  # Wait for Docker to be ready
+  echo "⏳ Waiting for Docker daemon to be ready..."
+  MAX_RETRIES=30
+  RETRY_COUNT=0
+  while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+    if sudo docker info &> /dev/null; then
+      echo "✅ Docker daemon is running"
+      break
+    fi
+    RETRY_COUNT=$((RETRY_COUNT + 1))
+    sleep 2
+  done
+
+  if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
+    echo "❌ Docker daemon failed to start after ${MAX_RETRIES} attempts"
+    exit 1
+  fi
 else
-  echo "✅ k3s is already installed"
+  echo "✅ Docker daemon is already running"
 fi
 
-# Ensure k3s service is running
-if ! sudo systemctl is-active --quiet k3s; then
-  echo "🔧 Starting k3s service..."
-  sudo systemctl start k3s
+echo "🔧 Setting up kubectl configuration..."
+mkdir -p ~/.kube
+
+# Check if k3s config exists
+if [[ -f /etc/rancher/k3s/k3s.yaml ]]; then
+  echo "📝 Found k3s configuration, setting up kubectl..."
+
+  # Copy k3s config to kubectl config location
+  sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
+  sudo chown $USER ~/.kube/config
+  sudo chmod 644 ~/.kube/config
+
+  # Export for this script session
+  export KUBECONFIG=~/.kube/config
+
+  echo "✅ kubectl configured with k3s"
+elif [[ -f ~/.kube/config ]]; then
+  echo "✅ kubectl config already exists"
+  export KUBECONFIG=~/.kube/config
+else
+  echo "⚠️  No Kubernetes config found. Make sure k3s is installed and running."
+  echo "   Run: sudo systemctl status k3s"
+  exit 1
 fi
 
-# Always wait for API server to be ready (even if service was already running)
 echo "⏳ Waiting for k3s API server to be ready..."
 MAX_RETRIES=30
 RETRY_COUNT=0
 while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-  if sudo k3s kubectl get --raw /readyz &>/dev/null; then
+  if kubectl cluster-info &>/dev/null; then
     echo "✅ k3s API server is responding"
     break
   fi
@@ -47,45 +144,38 @@ done
 
 if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
   echo "❌ k3s API server failed to start after ${MAX_RETRIES} attempts"
+  echo "🔍 Checking k3s service status..."
+  sudo systemctl status k3s --no-pager || echo "k3s service not found"
   exit 1
 fi
 
-# Setup kubectl configuration immediately after API server is ready
-echo "🔧 Setting up kubectl configuration..."
-mkdir -p ~/.kube
-sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
-sudo chown $USER ~/.kube/config
-sudo chmod 644 /etc/rancher/k3s/k3s.yaml
+echo "⏳ Waiting for k3s nodes to register..."
+MAX_RETRIES=30
+RETRY_COUNT=0
+while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+  if kubectl get nodes 2>/dev/null | grep -q "Ready\|NotReady"; then
+    echo "✅ Node(s) registered"
+    break
+  fi
+  RETRY_COUNT=$((RETRY_COUNT + 1))
+  sleep 2
+done
 
-# Export for this script session
-export KUBECONFIG=~/.kube/config
-echo "✅ kubectl configured - will work in all terminal sessions"
+if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
+  echo "❌ No nodes registered after 60 seconds"
+  echo "🔍 Checking k3s service status..."
+  sudo systemctl status k3s --no-pager || echo "k3s service not found"
+  exit 1
+fi
 
-# Wait for k3s nodes to be ready (now using regular kubectl with KUBECONFIG set)
 echo "⏳ Waiting for k3s nodes to be ready..."
 kubectl wait --for=condition=ready node --all --timeout=60s || {
   echo "❌ k3s nodes failed to become ready"
+  kubectl get nodes
   exit 1
 }
 
-echo "✅ k3s is running"
-
-echo "🔧 Configuring k3s components..."
-# k3s includes local-path storage provisioner and default storage class by default
-# Check if metrics-server is installed for HPA support
-if ! kubectl get deployment metrics-server -n kube-system &> /dev/null; then
-  echo "📊 Installing metrics-server for HPA support..."
-  kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
-
-  # Patch metrics-server for k3s (disable TLS verification for local development)
-  echo "🔧 Configuring metrics-server for k3s..."
-  kubectl patch deployment metrics-server -n kube-system --type='json' -p='[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--kubelet-insecure-tls"}]' 2>/dev/null || true
-
-  echo "⏳ Waiting for metrics-server to be ready..."
-  kubectl wait --for=condition=available --timeout=60s deployment/metrics-server -n kube-system || echo "⚠️  Metrics-server may need more time to start"
-else
-  echo "✅ metrics-server already installed, skipping"
-fi
+echo "✅ k3s cluster is ready"
 
 echo "📊 Installing Prometheus & Grafana Monitoring Stack..."
 # Add Prometheus Helm repository
@@ -97,11 +187,14 @@ else
   echo "✅ prometheus-community repo already added"
 fi
 
-# Check if kube-prometheus-stack is already installed
+# Create monitoring namespace if it doesn't exist
 if ! kubectl get namespace monitoring &> /dev/null; then
   echo "📦 Creating monitoring namespace..."
   kubectl create namespace monitoring
+fi
 
+# Check if kube-prometheus-stack helm release is actually installed
+if ! helm list -n monitoring | grep -q kube-prometheus-stack; then
   echo "📥 Installing kube-prometheus-stack (Prometheus + Grafana)..."
   helm install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
     --namespace monitoring \
@@ -112,6 +205,24 @@ if ! kubectl get namespace monitoring &> /dev/null; then
   echo "✅ Prometheus & Grafana installed successfully"
 else
   echo "✅ kube-prometheus-stack already installed, skipping"
+fi
+
+echo "⏳ Waiting for Prometheus CRDs to be ready..."
+MAX_RETRIES=30
+RETRY_COUNT=0
+while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+  if kubectl get crd servicemonitors.monitoring.coreos.com &>/dev/null && \
+     kubectl get crd prometheusrules.monitoring.coreos.com &>/dev/null; then
+    echo "✅ Prometheus CRDs are ready"
+    break
+  fi
+  RETRY_COUNT=$((RETRY_COUNT + 1))
+  sleep 2
+done
+
+if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
+  echo "⚠️  Prometheus CRDs not ready after 60 seconds, cannot apply monitoring resources"
+  exit 1
 fi
 
 echo "📊 Applying monitoring resources..."
@@ -143,25 +254,14 @@ echo "📄 Deploying application via ArgoCD..."
 kubectl apply --validate=false -f argocd/argocd.yaml
 
 echo "⏳ Waiting for ArgoCD to sync and deploy the application..."
-# Wait for ArgoCD application to be created
-kubectl wait --for=condition=Ready application/earthquake-app -n argocd --timeout=60s 2>/dev/null || echo "⚠️  ArgoCD Application created, syncing in progress..."
+# Wait for ArgoCD application to be created (reduced timeout - should be quick if ArgoCD is ready)
+kubectl wait --for=condition=Ready application/earthquake-app -n argocd --timeout=30s 2>/dev/null || echo "⚠️  ArgoCD Application created, syncing in progress..."
 
-# Give ArgoCD time to sync and deploy
-echo "⏳ Waiting for Earthquake deployment to become available..."
-sleep 5  # Brief wait for ArgoCD to start syncing
-
-# Wait for the deployment to be available
-kubectl rollout status deployment/earthquake-app-quackwatch-helm --timeout=180s 2>/dev/null || {
-  echo "⚠️  Deployment is still syncing. Check ArgoCD UI for status."
-  echo "   You can check manually with: kubectl get pods"
-}
-
-echo "🌐 Setting up service access..."
-
-# Wait for service to exist before port-forwarding
+# Wait for service to exist (this confirms deployment is progressing)
 echo "⏳ Waiting for service to be created..."
+MAX_RETRIES=45  # 45 retries × 2s = 90s total
 RETRY_COUNT=0
-while [ $RETRY_COUNT -lt 30 ]; do
+while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
   if kubectl get service/earthquake-app-quackwatch-helm &>/dev/null; then
     echo "✅ Service is ready"
     break
@@ -170,11 +270,17 @@ while [ $RETRY_COUNT -lt 30 ]; do
   sleep 2
 done
 
-if [ $RETRY_COUNT -eq 30 ]; then
-  echo "❌ Service not found after 60 seconds"
-  echo "   Check ArgoCD sync status: kubectl get application earthquake-app -n argocd"
+if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
+  echo "❌ Service not found after 90 seconds"
+  echo "   Checking ArgoCD sync status..."
+  kubectl get application earthquake-app -n argocd -o jsonpath='{.status.sync.status}' 2>/dev/null || echo "Unable to get sync status"
+  echo ""
+  echo "   Checking deployment status..."
+  kubectl get deployment earthquake-app-quackwatch-helm 2>/dev/null || echo "Deployment not found"
   exit 1
 fi
+
+echo "🌐 Setting up service access..."
 
 # Kill any existing port-forward on port 8080
 pkill -f "port-forward.*earthquake-app" 2>/dev/null || true

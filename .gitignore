@@ -178,3 +178,20 @@ logs/
 *.tgz
 
 test-env
+
+# Ignore all .terraform directories
+**/.terraform/
+
+# Ignore Terraform state files
+*.tfstate
+*.tfstate.backup
+
+# Ignore Terraform plan files
+*.tfplan
+
+# Ignore sensitive variable files
+*.tfvars
+*.tfvars.json
+
+# Ignore provider cache
+.terraform.lock.hcl

@@ -72,14 +72,19 @@ fi
 
 # Check if kube-prometheus-stack is already installed
 if ! helm list -n monitoring | grep -q kube-prometheus-stack; then
-  echo "📥 Installing kube-prometheus-stack (this may take 5-10 minutes on t2.micro)..."
+  echo "📥 Installing minimal kube-prometheus-stack for t2.micro (demo config)..."
+  echo "ℹ️  Using reduced settings: 2h retention, minimal resources, no persistent storage"
+
+  # Download minimal values file
+  curl -fsSL -o /tmp/prometheus-minimal-values.yaml \
+    https://raw.githubusercontent.com/gabrielrosinski/devops-course-project/terraform/terraform/prometheus-minimal-values.yaml
+
   helm install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
     --namespace monitoring \
-    --set prometheus.prometheusSpec.podMonitorSelectorNilUsesHelmValues=false \
-    --set prometheus.prometheusSpec.serviceMonitorSelectorNilUsesHelmValues=false \
-    --wait --timeout=15m
+    --values /tmp/prometheus-minimal-values.yaml \
+    --wait --timeout=10m
 
-  echo "✅ Prometheus & Grafana installed successfully"
+  echo "✅ Minimal Prometheus & Grafana installed successfully"
 else
   echo "✅ kube-prometheus-stack already installed, skipping"
 fi

@@ -1,0 +1,60 @@
+# Minimal kube-prometheus-stack values for t2.micro (1GB RAM)
+# This is for DEMO/LEARNING purposes only - NOT production!
+
+# Disable components we don't need for demo
+alertmanager:
+  enabled: false  # Not needed for demo
+
+grafana:
+  enabled: true
+  resources:
+    requests:
+      memory: 64Mi
+      cpu: 50m
+    limits:
+      memory: 128Mi
+      cpu: 100m
+  persistence:
+    enabled: false  # No persistence for demo
+
+prometheus:
+  enabled: true
+  prometheusSpec:
+    resources:
+      requests:
+        memory: 128Mi
+        cpu: 100m
+      limits:
+        memory: 256Mi
+        cpu: 200m
+    retention: 2h  # Only keep 2 hours of data (demo)
+    storageSpec: {}  # No persistent storage
+    podMonitorSelectorNilUsesHelmValues: false
+    serviceMonitorSelectorNilUsesHelmValues: false
+
+# Disable resource-heavy exporters
+prometheus-node-exporter:
+  enabled: false
+
+kube-state-metrics:
+  resources:
+    requests:
+      memory: 32Mi
+      cpu: 10m
+    limits:
+      memory: 64Mi
+      cpu: 50m
+
+prometheusOperator:
+  resources:
+    requests:
+      memory: 64Mi
+      cpu: 50m
+    limits:
+      memory: 128Mi
+      cpu: 100m
+
+# Disable admission webhooks (causes issues on small clusters)
+prometheusOperator:
+  admissionWebhooks:
+    enabled: false

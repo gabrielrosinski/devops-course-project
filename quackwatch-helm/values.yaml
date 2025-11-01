@@ -1,5 +1,6 @@
 # Default values for QuakeWatch application
-replicaCount: 3
+# For t2.micro demo: use 1 replica to save ~256MB RAM
+replicaCount: 1
 
 image:
   repository: blaqr/earthquake
@@ -66,8 +67,8 @@ readinessProbe:
 
 autoscaling:
   enabled: true
-  minReplicas: 2
-  maxReplicas: 5
+  minReplicas: 1  # Reduced for t2.micro demo
+  maxReplicas: 3  # Reduced for t2.micro demo
   targetCPUUtilizationPercentage: 50
 
 # ConfigMap settings

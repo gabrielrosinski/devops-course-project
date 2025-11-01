@@ -40,7 +40,7 @@ echo "==================================================================="
 # Update package lists and upgrade existing packages.
 # This ensures we have the latest security patches.
 
-echo "[1/6] Updating system packages..."
+echo "[1/8] Updating system packages..."
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
 apt-get upgrade -y
@@ -50,7 +50,7 @@ apt-get upgrade -y
 # =============================================================================
 # Install tools needed for K3s and general system management.
 
-echo "[2/6] Installing dependencies..."
+echo "[2/8] Installing dependencies..."
 apt-get install -y \
     curl \
     wget \
@@ -68,7 +68,7 @@ apt-get install -y \
 # =============================================================================
 # Enable kernel modules and sysctl settings required by Kubernetes.
 
-echo "[3/6] Configuring system for K3s..."
+echo "[3/8] Configuring system for K3s..."
 
 # Enable IP forwarding (required for pod networking)
 cat <<EOF > /etc/sysctl.d/k3s.conf
@@ -95,7 +95,7 @@ sysctl --system
 # - --disable traefik: We'll use our own ingress later
 # - --tls-san: Adds EC2 public IP to TLS certificate (for external kubectl)
 
-echo "[4/6] Installing K3s $K3S_VERSION..."
+echo "[4/8] Installing K3s $K3S_VERSION..."
 
 # Get EC2 instance's public IP
 TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600" -s)
@@ -129,22 +129,22 @@ echo "K3s service is active!"
 # =============================================================================
 # Copy kubeconfig to ubuntu user's home directory for easy kubectl access.
 
-echo "[5/6] Configuring kubectl for ubuntu user..."
+echo "[5/8] Configuring kubectl for ubuntu user..."
 
 mkdir -p /home/ubuntu/.kube
 cp /etc/rancher/k3s/k3s.yaml /home/ubuntu/.kube/config
 chown -R ubuntu:ubuntu /home/ubuntu/.kube
 chmod 600 /home/ubuntu/.kube/config
 
-# Update kubeconfig to use public IP (for remote kubectl access)
-sed -i "s|https://127.0.0.1:6443|https://$PUBLIC_IP:6443|g" /home/ubuntu/.kube/config
+# Keep config using localhost - works for on-instance use and SSH tunneling
+# No modifications needed!
 
 # =============================================================================
 # Step 6: Install Helm
 # =============================================================================
 # Helm is the package manager for Kubernetes - needed for deploying charts.
 
-echo "[6/7] Installing Helm..."
+echo "[6/8] Installing Helm..."
 
 curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 
@@ -158,7 +158,7 @@ echo "✅ Helm installed successfully"
 # =============================================================================
 # Add helpful aliases for the ubuntu user.
 
-echo "[7/7] Setting up kubectl aliases..."
+echo "[7/8] Setting up kubectl aliases..."
 
 cat <<'EOF' >> /home/ubuntu/.bashrc
 
@@ -187,6 +187,19 @@ EOF
 chown ubuntu:ubuntu /home/ubuntu/.bashrc
 
 # =============================================================================
+# Step 8: Download Application Deployment Script
+# =============================================================================
+# Download the deploy-apps.sh script from GitHub for easy application deployment.
+
+echo "[8/8] Downloading deploy-apps.sh from repository..."
+
+curl -fsSL -o /home/ubuntu/deploy-apps.sh https://raw.githubusercontent.com/gabrielrosinski/devops-course-project/main/terraform/deploy-apps.sh
+chmod +x /home/ubuntu/deploy-apps.sh
+chown ubuntu:ubuntu /home/ubuntu/deploy-apps.sh
+
+echo "✅ deploy-apps.sh ready at /home/ubuntu/deploy-apps.sh"
+
+# =============================================================================
 # Completion Message
 # =============================================================================
 
@@ -212,12 +225,16 @@ echo "kubectl: $(kubectl version --client --short 2>/dev/null || echo 'installed
 echo "helm: $(helm version --short)"
 echo ""
 echo "==================================================================="
-echo "To access the cluster remotely:"
-echo "1. Copy /etc/rancher/k3s/k3s.yaml to your local machine"
-echo "2. Replace 127.0.0.1 with $PUBLIC_IP"
-echo "3. Set KUBECONFIG environment variable"
+echo "To use kubectl ON this instance:"
+echo "  kubectl get nodes"
 echo ""
-echo "Or SSH to instance and use: kubectl get nodes"
+echo "To access the cluster remotely from your local machine:"
+echo "  1. Set up SSH tunnel:"
+echo "     ssh -L 6443:localhost:6443 -i <key> ubuntu@$PUBLIC_IP"
+echo "  2. Copy config and use it:"
+echo "     scp -i <key> ubuntu@$PUBLIC_IP:~/.kube/config ~/.kube/k3s-config"
+echo "     export KUBECONFIG=~/.kube/k3s-config"
+echo "     kubectl get nodes"
 echo ""
 echo "To deploy applications, run: ./deploy-apps.sh"
 echo "==================================================================="

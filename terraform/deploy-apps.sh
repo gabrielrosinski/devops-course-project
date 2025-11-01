@@ -48,6 +48,21 @@ fi
 echo "✅ Pre-flight checks passed"
 echo ""
 
+# Clone or update the repository
+if [ ! -d "/home/ubuntu/devops-course-project" ]; then
+  echo "📥 Cloning QuakeWatch repository..."
+  cd /home/ubuntu
+  git clone https://github.com/gabrielrosinski/devops-course-project.git
+  cd devops-course-project
+else
+  echo "✅ Repository already exists, updating..."
+  cd /home/ubuntu/devops-course-project
+  git pull origin main || echo "⚠️  Could not update repository"
+fi
+
+echo "✅ Repository ready"
+echo ""
+
 # =============================================================================
 # Step 1: Install Prometheus & Grafana Monitoring Stack
 # =============================================================================
@@ -75,13 +90,9 @@ if ! helm list -n monitoring | grep -q kube-prometheus-stack; then
   echo "📥 Installing minimal kube-prometheus-stack for t2.micro (demo config)..."
   echo "ℹ️  Using reduced settings: 2h retention, minimal resources, no persistent storage"
 
-  # Download minimal values file
-  curl -fsSL -o /tmp/prometheus-minimal-values.yaml \
-    https://raw.githubusercontent.com/gabrielrosinski/devops-course-project/terraform/terraform/prometheus-minimal-values.yaml
-
   helm install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
     --namespace monitoring \
-    --values /tmp/prometheus-minimal-values.yaml \
+    --values /home/ubuntu/devops-course-project/monitoring/helm-values/prometheus-minimal-values.yaml \
     --wait --timeout=10m
 
   echo "✅ Minimal Prometheus & Grafana installed successfully"
@@ -144,17 +155,8 @@ echo ""
 echo "📦 [3/3] Deploying QuakeWatch Application..."
 echo "-------------------------------------------------------------"
 
-# Clone the repository if it doesn't exist
-if [ ! -d "/home/ubuntu/devops-course-project" ]; then
-  echo "📥 Cloning QuakeWatch repository..."
-  cd /home/ubuntu
-  git clone https://github.com/gabrielrosinski/devops-course-project.git
-  cd devops-course-project
-else
-  echo "✅ Repository already exists"
-  cd /home/ubuntu/devops-course-project
-  git pull origin main || echo "⚠️  Could not update repository"
-fi
+# Ensure we're in the repository directory
+cd /home/ubuntu/devops-course-project
 
 # Apply ArgoCD application manifest
 if [ -f "argocd/argocd.yaml" ]; then

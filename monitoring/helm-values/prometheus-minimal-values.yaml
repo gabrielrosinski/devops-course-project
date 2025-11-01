@@ -1,4 +1,4 @@
-# Minimal kube-prometheus-stack values for t2.micro (1GB RAM)
+# Minimal kube-prometheus-stack values for t3a.small (2GB RAM)
 # This is for DEMO/LEARNING purposes only - NOT production!
 
 # Disable components we don't need for demo
@@ -53,8 +53,5 @@ prometheusOperator:
     limits:
       memory: 128Mi
       cpu: 100m
-
-# Disable admission webhooks (causes issues on small clusters)
-prometheusOperator:
   admissionWebhooks:
-    enabled: false
+    enabled: false  # Disable admission webhooks (causes issues on small clusters)

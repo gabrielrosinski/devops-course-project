@@ -1,125 +1,116 @@
-#  resource "aws_vpc" "main" {
-#     cidr_block           = "10.0.0.0/16"
-#     enable_dns_hostnames = true
-#     enable_dns_support   = true
+# =============================================================================
+# VPC Configuration for K3s Cluster
+# =============================================================================
+# This VPC provides isolated networking for our K3s cluster.
+# CIDR 10.0.0.0/16 gives us 65,536 IP addresses to work with.
 
-#     tags = {
-#       Name = "earthquake-vpc"
-#     }
-#   }
+resource "aws_vpc" "main" {
+  cidr_block           = var.vpc_cidr
+  enable_dns_hostnames = true  # Required: K3s needs DNS for service discovery
+  enable_dns_support   = true  # Required: Enables DNS resolution within VPC
 
-#   # Internet Gateway
-#   resource "aws_internet_gateway" "main" {
-#     vpc_id = aws_vpc.main.id
+  tags = {
+    Name        = "${var.project_name}-vpc"
+    Project     = var.project_name
+    ManagedBy   = "Terraform"
+    Environment = var.environment
+  }
+}
 
-#     tags = {
-#       Name = "earthquake-igw"
-#     }
-#   }
+# =============================================================================
+# Internet Gateway
+# =============================================================================
+# Allows communication between VPC and the internet.
+# Required for: downloading K3s, pulling container images, public app access.
 
-#   # Public Subnet 1 (us-east-1a)
-#   resource "aws_subnet" "public_1" {
-#     vpc_id                  = aws_vpc.main.id
-#     cidr_block              = "10.0.1.0/24"
-#     availability_zone       = "us-east-1a"
-#     map_public_ip_on_launch = true
+resource "aws_internet_gateway" "main" {
+  vpc_id = aws_vpc.main.id
 
-#     tags = {
-#       Name = "public-subnet-1a"
-#     }
-#   }
+  tags = {
+    Name      = "${var.project_name}-igw"
+    Project   = var.project_name
+    ManagedBy = "Terraform"
+  }
+}
 
-#   # Public Subnet 2 (us-east-1b) - For high availability
-#   resource "aws_subnet" "public_2" {
-#     vpc_id                  = aws_vpc.main.id
-#     cidr_block              = "10.0.2.0/24"
-#     availability_zone       = "us-east-1b"
-#     map_public_ip_on_launch = true
+# =============================================================================
+# Public Subnets
+# =============================================================================
+# Public subnets have direct route to Internet Gateway.
+# map_public_ip_on_launch = true → instances get public IPs automatically.
+# We create 2 subnets in different AZs for high availability (future-proof).
 
-#     tags = {
-#       Name = "public-subnet-1b"
-#     }
-#   }
+resource "aws_subnet" "public_1" {
+  vpc_id                  = aws_vpc.main.id
+  cidr_block              = var.public_subnet_1_cidr
+  availability_zone       = data.aws_availability_zones.available.names[0]
+  map_public_ip_on_launch = true
 
-#   # Private Subnet 1 (future use - databases, internal services)
-#   resource "aws_subnet" "private_1" {
-#     vpc_id            = aws_vpc.main.id
-#     cidr_block        = "10.0.10.0/24"
-#     availability_zone = "us-east-1a"
+  tags = {
+    Name                     = "${var.project_name}-public-subnet-1"
+    Project                  = var.project_name
+    ManagedBy                = "Terraform"
+    "kubernetes.io/role/elb" = "1"  # Tag for future K8s Load Balancer integration
+  }
+}
 
-#     tags = {
-#       Name = "private-subnet-1a"
-#     }
-#   }
+resource "aws_subnet" "public_2" {
+  vpc_id                  = aws_vpc.main.id
+  cidr_block              = var.public_subnet_2_cidr
+  availability_zone       = data.aws_availability_zones.available.names[1]
+  map_public_ip_on_launch = true
 
-#   # Private Subnet 2
-#   resource "aws_subnet" "private_2" {
-#     vpc_id            = aws_vpc.main.id
-#     cidr_block        = "10.0.11.0/24"
-#     availability_zone = "us-east-1b"
+  tags = {
+    Name                     = "${var.project_name}-public-subnet-2"
+    Project                  = var.project_name
+    ManagedBy                = "Terraform"
+    "kubernetes.io/role/elb" = "1" //This tells Kubernetes "you can create Load Balancers in this subnet"
+  }
+}
 
-#     tags = {
-#       Name = "private-subnet-1b"
-#     }
-#   }
+# =============================================================================
+# Route Table for Public Subnets
+# =============================================================================
+# Routes all outbound traffic (0.0.0.0/0) through Internet Gateway.
+# This makes the subnets "public" - they can reach the internet.
 
-#   # Route Table for Public Subnets
-#   resource "aws_route_table" "public" {
-#     vpc_id = aws_vpc.main.id
+resource "aws_route_table" "public" {
+  vpc_id = aws_vpc.main.id
 
-#     route {
-#       cidr_block = "0.0.0.0/0"
-#       gateway_id = aws_internet_gateway.main.id
-#     }
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.main.id
+  }
 
-#     tags = {
-#       Name = "public-route-table"
-#     }
-#   }
+  tags = {
+    Name      = "${var.project_name}-public-rt"
+    Project   = var.project_name
+    ManagedBy = "Terraform"
+  }
+}
 
-#   # Associate Public Subnet 1 with Route Table
-#   resource "aws_route_table_association" "public_1" {
-#     subnet_id      = aws_subnet.public_1.id
-#     route_table_id = aws_route_table.public.id
-#   }
+# =============================================================================
+# Route Table Associations
+# =============================================================================
+# Links our public subnets to the public route table.
+# Without this, subnets would use the default (private) route table.
 
-#   # Associate Public Subnet 2 with Route Table
-#   resource "aws_route_table_association" "public_2" {
-#     subnet_id      = aws_subnet.public_2.id
-#     route_table_id = aws_route_table.public.id
-#   }
+resource "aws_route_table_association" "public_1" {
+  subnet_id      = aws_subnet.public_1.id
+  route_table_id = aws_route_table.public.id
+}
 
-#   Then update ec2.tf:
-#   resource "aws_instance" "web" {
-#     ami           = "ami-0360c520857e3138f"
-#     instance_type = var.instance_type
-#     key_name      = var.key_name
-    
-#     subnet_id              = aws_subnet.public_1.id  # Add this line
-#     vpc_security_group_ids = [aws_security_group.web_sg.id]
+resource "aws_route_table_association" "public_2" {
+  subnet_id      = aws_subnet.public_2.id
+  route_table_id = aws_route_table.public.id
+}
 
-#     tags = {
-#       Name = "earthquake-web"
-#     }
-#   }
+# =============================================================================
+# Data Source: Availability Zones
+# =============================================================================
+# Dynamically fetches available AZs in the selected region.
+# Makes our config portable across different AWS regions.
 
-#   Update security.tf - Add VPC ID:
-#   resource "aws_security_group" "web_sg" {
-#     name        = "earthquake-web-sg"
-#     description = "Allow SSH, HTTP, Docker, Flask"
-#     vpc_id      = aws_vpc.main.id  # Add this line
-    
-#     # ... rest of your ingress/egress rules
-#   }
-
-#   Add to outputs.tf:
-#   output "vpc_id" {
-#     value = aws_vpc.main.id
-#   }
-
-#   output "public_subnet_ids" {
-#     value = [aws_subnet.public_1.id, aws_subnet.public_2.id]
-#   }
-
-
-# also check if there are other vpc configc in other files that needs to be removed
+data "aws_availability_zones" "available" {
+  state = "available"
+}

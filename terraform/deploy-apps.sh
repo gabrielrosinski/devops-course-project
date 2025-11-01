@@ -143,7 +143,7 @@ echo "-------------------------------------------------------------"
 if [ ! -d "/home/ubuntu/devops-course-project" ]; then
   echo "📥 Cloning QuakeWatch repository..."
   cd /home/ubuntu
-  git clone https://github.com/YOUR_USERNAME/devops-course-project.git
+  git clone https://github.com/gabrielrosinski/devops-course-project.git
   cd devops-course-project
 else
   echo "✅ Repository already exists"

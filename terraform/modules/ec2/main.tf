@@ -52,9 +52,11 @@ resource "aws_instance" "k3s_server" {
   tags = merge(
     var.tags,
     {
-      Name                                        = "${var.project_name}-k3s-server"
-      Role                                        = "k3s-server"
-      "kubernetes.io/cluster/${var.project_name}" = "owned"
+      Name                         = "${var.project_name}-k3s-server"
+      Role                         = "k3s-server"
+      "KubernetesCluster"          = var.project_name
+      "kubernetes.io-cluster-name" = var.project_name
+      "kubernetes.io-cluster-role" = "owned"
     }
   )
 

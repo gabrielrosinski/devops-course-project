@@ -98,8 +98,11 @@ sysctl --system
 echo "[4/6] Installing K3s $K3S_VERSION..."
 
 # Get EC2 instance's public IP
-PUBLIC_IP=$(ec2-metadata --public-ipv4 | cut -d ' ' -f 2)
+TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600" -s)
+PUBLIC_IP=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" -s http://169.254.169.254/latest/meta-data/public-ipv4)
+PRIVATE_IP=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" -s http://169.254.169.254/latest/meta-data/local-ipv4)
 echo "Instance Public IP: $PUBLIC_IP"
+echo "Instance Private IP: $PRIVATE_IP"
 
 # Install K3s
 curl -sfL https://get.k3s.io | \
@@ -109,7 +112,7 @@ curl -sfL https://get.k3s.io | \
     --write-kubeconfig-mode 644 \
     --tls-san "$PUBLIC_IP" \
     --node-external-ip "$PUBLIC_IP" \
-    --advertise-address "$PUBLIC_IP" \
+    --advertise-address "$PRIVATE_IP" \
     --flannel-backend=vxlan
 
 # Wait for K3s to be ready

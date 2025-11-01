@@ -151,7 +151,7 @@ variable "k3s_version" {
 variable "k3s_token" {
   description = "K3s cluster token for node authentication (keep secret!)"
   type        = string
-  sensitive   = true  # Hides value in Terraform output
+  sensitive   = true # Hides value in Terraform output
 
   # This token is used when joining additional nodes to the cluster.
   # Generate a random token: openssl rand -hex 32

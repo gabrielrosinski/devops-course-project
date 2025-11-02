@@ -200,34 +200,44 @@ mkdir -p /home/ubuntu/deploy_config/monitoring/standalone
 mkdir -p /home/ubuntu/deploy_config/argocd
 
 # Download deployment script
-echo "📥 Downloading deploy-apps.sh..."
+echo "📥 [1/7] Downloading deploy-apps.sh..."
 curl -fsSL -o /home/ubuntu/deploy-apps.sh \
   https://raw.githubusercontent.com/gabrielrosinski/devops-course-project/main/terraform/deploy-apps.sh
+echo "   ✅ deploy-apps.sh"
 chmod +x /home/ubuntu/deploy-apps.sh
 
 # Download Prometheus Helm values
-echo "📥 Downloading Prometheus configuration..."
+echo "📥 [2/7] Downloading prometheus-minimal-values.yaml..."
 curl -fsSL -o /home/ubuntu/deploy_config/monitoring/helm-values/prometheus-minimal-values.yaml \
   https://raw.githubusercontent.com/gabrielrosinski/devops-course-project/main/monitoring/helm-values/prometheus-minimal-values.yaml
+echo "   ✅ prometheus-minimal-values.yaml"
 
+echo "📥 [3/7] Downloading alertmanager-values.yaml..."
 curl -fsSL -o /home/ubuntu/deploy_config/monitoring/helm-values/alertmanager-values.yaml \
   https://raw.githubusercontent.com/gabrielrosinski/devops-course-project/main/monitoring/helm-values/alertmanager-values.yaml
+echo "   ✅ alertmanager-values.yaml"
 
 # Download standalone monitoring configs
-echo "📥 Downloading monitoring configurations..."
+echo "📥 [4/7] Downloading prometheus-alerts.yaml..."
 curl -fsSL -o /home/ubuntu/deploy_config/monitoring/standalone/prometheus-alerts.yaml \
   https://raw.githubusercontent.com/gabrielrosinski/devops-course-project/main/monitoring/standalone/prometheus-alerts.yaml
+echo "   ✅ prometheus-alerts.yaml"
 
+echo "📥 [5/7] Downloading grafana-dashboard.yaml..."
 curl -fsSL -o /home/ubuntu/deploy_config/monitoring/standalone/grafana-dashboard.yaml \
   https://raw.githubusercontent.com/gabrielrosinski/devops-course-project/main/monitoring/standalone/grafana-dashboard.yaml
+echo "   ✅ grafana-dashboard.yaml"
 
+echo "📥 [6/7] Downloading servicemonitor.yaml..."
 curl -fsSL -o /home/ubuntu/deploy_config/monitoring/standalone/servicemonitor.yaml \
   https://raw.githubusercontent.com/gabrielrosinski/devops-course-project/main/monitoring/standalone/servicemonitor.yaml
+echo "   ✅ servicemonitor.yaml"
 
 # Download ArgoCD application manifest
-echo "📥 Downloading ArgoCD configuration..."
+echo "📥 [7/7] Downloading argocd.yaml..."
 curl -fsSL -o /home/ubuntu/deploy_config/argocd/argocd.yaml \
   https://raw.githubusercontent.com/gabrielrosinski/devops-course-project/main/argocd/argocd.yaml
+echo "   ✅ argocd.yaml"
 
 # Set ownership
 chown -R ubuntu:ubuntu /home/ubuntu/deploy-apps.sh /home/ubuntu/deploy_config

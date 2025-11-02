@@ -7,6 +7,9 @@ alertmanager:
 
 grafana:
   enabled: true
+  service:
+    type: NodePort
+    nodePort: 30300  # Access Grafana at http://<public-ip>:30300
   resources:
     requests:
       memory: 64Mi
@@ -19,6 +22,9 @@ grafana:
 
 prometheus:
   enabled: true
+  service:
+    type: NodePort
+    nodePort: 30900  # Access Prometheus at http://<public-ip>:30900
   prometheusSpec:
     resources:
       requests:

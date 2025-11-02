@@ -155,6 +155,15 @@ else
   echo "✅ ArgoCD already installed, skipping"
 fi
 
+# Apply NodePort configuration for external access
+echo "🌐 Configuring ArgoCD for NodePort access..."
+if [ -f "/home/ubuntu/deploy_config/argocd/argocd-nodeport.yaml" ]; then
+  kubectl apply -f /home/ubuntu/deploy_config/argocd/argocd-nodeport.yaml
+  echo "✅ ArgoCD NodePort service configured (ports 30080, 30443)"
+else
+  echo "⚠️  argocd-nodeport.yaml not found, skipping NodePort configuration"
+fi
+
 echo ""
 
 # =============================================================================
@@ -252,9 +261,12 @@ else
   echo "  kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath=\"{.data.password}\" | base64 -d"
 fi
 echo ""
-echo "To access ArgoCD UI:"
-echo "  kubectl port-forward svc/argocd-server -n argocd 8081:443 --address 0.0.0.0"
-echo "  Then navigate to: https://$PUBLIC_IP:8081"
+if [ "$PUBLIC_IP" != "N/A" ]; then
+  echo "🌐 ArgoCD UI (HTTPS): https://$PUBLIC_IP:30443"
+  echo "🌐 ArgoCD UI (HTTP):  http://$PUBLIC_IP:30080"
+else
+  echo "⚠️  Public IP not available. Access via NodePort: https://<public-ip>:30443"
+fi
 echo ""
 
 # Grafana credentials
@@ -269,17 +281,21 @@ else
   echo "  kubectl get secret kube-prometheus-stack-grafana -n monitoring -o jsonpath=\"{.data.admin-password}\" | base64 -d"
 fi
 echo ""
-echo "To access Grafana UI:"
-echo "  kubectl port-forward svc/kube-prometheus-stack-grafana -n monitoring 3000:80 --address 0.0.0.0"
-echo "  Then navigate to: http://$PUBLIC_IP:3000"
+if [ "$PUBLIC_IP" != "N/A" ]; then
+  echo "🌐 Grafana UI: http://$PUBLIC_IP:30300"
+else
+  echo "⚠️  Public IP not available. Access via NodePort: http://<public-ip>:30300"
+fi
 echo ""
 
 # Prometheus access
 echo "📈 Prometheus:"
 echo "-------------------------------------------------------------"
-echo "To access Prometheus UI:"
-echo "  kubectl port-forward svc/kube-prometheus-stack-prometheus -n monitoring 9090:9090 --address 0.0.0.0"
-echo "  Then navigate to: http://$PUBLIC_IP:9090"
+if [ "$PUBLIC_IP" != "N/A" ]; then
+  echo "🌐 Prometheus UI: http://$PUBLIC_IP:30900"
+else
+  echo "⚠️  Public IP not available. Access via NodePort: http://<public-ip>:30900"
+fi
 echo ""
 
 # Useful commands

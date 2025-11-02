@@ -1,0 +1,27 @@
+# ArgoCD Server NodePort Service Patch
+# This patches the ArgoCD server service to use NodePort for external access
+# Apply this AFTER ArgoCD is installed
+#
+# Usage:
+#   kubectl apply -f argocd-nodeport.yaml
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: argocd-server
+  namespace: argocd
+spec:
+  type: NodePort
+  ports:
+  - name: http
+    port: 80
+    protocol: TCP
+    targetPort: 8080
+    nodePort: 30080  # Access ArgoCD HTTP at http://<public-ip>:30080
+  - name: https
+    port: 443
+    protocol: TCP
+    targetPort: 8080
+    nodePort: 30443  # Access ArgoCD HTTPS at https://<public-ip>:30443
+  selector:
+    app.kubernetes.io/name: argocd-server

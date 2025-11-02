@@ -234,10 +234,16 @@ curl -fsSL -o /home/ubuntu/deploy_config/monitoring/standalone/servicemonitor.ya
 echo "   ✅ servicemonitor.yaml"
 
 # Download ArgoCD application manifest
-echo "📥 [7/7] Downloading argocd.yaml..."
+echo "📥 [7/8] Downloading argocd.yaml..."
 curl -fsSL -o /home/ubuntu/deploy_config/argocd/argocd.yaml \
   https://raw.githubusercontent.com/gabrielrosinski/devops-course-project/main/argocd/argocd.yaml
 echo "   ✅ argocd.yaml"
+
+# Download ArgoCD NodePort service configuration
+echo "📥 [8/8] Downloading argocd-nodeport.yaml..."
+curl -fsSL -o /home/ubuntu/deploy_config/argocd/argocd-nodeport.yaml \
+  https://raw.githubusercontent.com/gabrielrosinski/devops-course-project/main/argocd/argocd-nodeport.yaml
+echo "   ✅ argocd-nodeport.yaml"
 
 # Set ownership
 chown -R ubuntu:ubuntu /home/ubuntu/deploy-apps.sh /home/ubuntu/deploy_config
@@ -247,7 +253,7 @@ echo "   Files ready:"
 echo "   - deploy-apps.sh"
 echo "   - 2 Helm values files"
 echo "   - 3 monitoring configs"
-echo "   - 1 ArgoCD manifest"
+echo "   - 2 ArgoCD manifests"
 
 # =============================================================================
 # Completion Message

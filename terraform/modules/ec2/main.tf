@@ -33,8 +33,9 @@ resource "aws_instance" "k3s_server" {
 
   # User Data Script - Automated K3s Installation
   user_data = base64encode(templatefile("${var.user_data_script_path}", {
-    k3s_version = var.k3s_version
-    k3s_token   = var.k3s_token
+    k3s_version   = var.k3s_version
+    k3s_token     = var.k3s_token
+    instance_type = var.instance_type
   }))
 
   # Metadata Options (Security Hardening)

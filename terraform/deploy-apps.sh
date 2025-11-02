@@ -83,7 +83,10 @@ fi
 
 # Check if kube-prometheus-stack is already installed
 if ! helm list -n monitoring | grep -q kube-prometheus-stack; then
-  echo "📥 Installing minimal kube-prometheus-stack for t2.micro (demo config)..."
+  # Use instance type from environment (set by user-data.sh) or fallback
+  INSTANCE_TYPE_DISPLAY="${INSTANCE_TYPE:-unknown}"
+
+  echo "📥 Installing minimal kube-prometheus-stack for $INSTANCE_TYPE_DISPLAY (demo config)..."
   echo "ℹ️  Using reduced settings: 2h retention, minimal resources, no persistent storage"
 
   helm install kube-prometheus-stack prometheus-community/kube-prometheus-stack \

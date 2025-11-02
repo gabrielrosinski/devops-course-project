@@ -18,6 +18,7 @@ set -x  # Print commands as they execute (useful for debugging in cloud-init log
 # =============================================================================
 K3S_VERSION="${k3s_version}"
 K3S_TOKEN="${k3s_token}"
+INSTANCE_TYPE="${instance_type}"
 
 # =============================================================================
 # Logging Setup
@@ -247,6 +248,9 @@ echo "   ✅ argocd-nodeport.yaml"
 
 # Set ownership
 chown -R ubuntu:ubuntu /home/ubuntu/deploy-apps.sh /home/ubuntu/deploy_config
+
+# Export instance type for deploy-apps.sh to use
+echo "export INSTANCE_TYPE='$INSTANCE_TYPE'" >> /home/ubuntu/.bashrc
 
 echo "✅ All deployment files downloaded to /home/ubuntu/deploy_config"
 echo "   Files ready:"

@@ -72,9 +72,9 @@ variable "public_subnet_2_cidr" {
 # =============================================================================
 
 variable "instance_type" {
-  description = "EC2 instance type (t2.micro = free tier, 1 vCPU, 1GB RAM)"
+  description = "EC2 instance type (t3a.medium = 2 vCPU, 4GB RAM)"
   type        = string
-  default     = "t2.micro"
+  default     = "t3a.medium"
 }
 
 variable "ami_id" {

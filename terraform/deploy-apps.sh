@@ -216,7 +216,21 @@ echo ""
 echo "📋 Service Information:"
 echo "-------------------------------------------------------------"
 SERVICE_PORT=$(kubectl get service earthquake-app-quackwatch-helm -o jsonpath='{.spec.ports[0].nodePort}' 2>/dev/null || echo "N/A")
-PUBLIC_IP=$(curl -s http://169.254.169.254/latest/meta-data/public-ipv4 2>/dev/null || echo "N/A")
+
+# Get public IP using IMDSv2 (with fallback to IMDSv1)
+TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600" -s --connect-timeout 2 2>/dev/null)
+if [ -n "$TOKEN" ]; then
+  # Use IMDSv2 with token
+  PUBLIC_IP=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" -s --connect-timeout 2 http://169.254.169.254/latest/meta-data/public-ipv4 2>/dev/null)
+else
+  # Fallback to IMDSv1
+  PUBLIC_IP=$(curl -s --connect-timeout 2 http://169.254.169.254/latest/meta-data/public-ipv4 2>/dev/null)
+fi
+
+# Set to N/A if empty
+if [ -z "$PUBLIC_IP" ]; then
+  PUBLIC_IP="N/A"
+fi
 
 if [ "$SERVICE_PORT" != "N/A" ] && [ "$PUBLIC_IP" != "N/A" ]; then
   echo "🌐 QuakeWatch Application: http://$PUBLIC_IP:$SERVICE_PORT"

@@ -187,17 +187,57 @@ EOF
 chown ubuntu:ubuntu /home/ubuntu/.bashrc
 
 # =============================================================================
-# Step 8: Download Application Deployment Script
+# Step 8: Download Deployment Configuration Files
 # =============================================================================
-# Download the deploy-apps.sh script from GitHub for easy application deployment.
+# Download deployment script and all required config files from GitHub.
+# This avoids cloning the entire repository.
 
-echo "[8/8] Downloading deploy-apps.sh from repository..."
+echo "[8/8] Downloading deployment configuration files..."
 
-curl -fsSL -o /home/ubuntu/deploy-apps.sh https://raw.githubusercontent.com/gabrielrosinski/devops-course-project/main/terraform/deploy-apps.sh
+# Create deployment config directory structure
+mkdir -p /home/ubuntu/deploy_config/monitoring/helm-values
+mkdir -p /home/ubuntu/deploy_config/monitoring/standalone
+mkdir -p /home/ubuntu/deploy_config/argocd
+
+# Download deployment script
+echo "📥 Downloading deploy-apps.sh..."
+curl -fsSL -o /home/ubuntu/deploy-apps.sh \
+  https://raw.githubusercontent.com/gabrielrosinski/devops-course-project/main/terraform/deploy-apps.sh
 chmod +x /home/ubuntu/deploy-apps.sh
-chown ubuntu:ubuntu /home/ubuntu/deploy-apps.sh
 
-echo "✅ deploy-apps.sh ready at /home/ubuntu/deploy-apps.sh"
+# Download Prometheus Helm values
+echo "📥 Downloading Prometheus configuration..."
+curl -fsSL -o /home/ubuntu/deploy_config/monitoring/helm-values/prometheus-minimal-values.yaml \
+  https://raw.githubusercontent.com/gabrielrosinski/devops-course-project/main/monitoring/helm-values/prometheus-minimal-values.yaml
+
+curl -fsSL -o /home/ubuntu/deploy_config/monitoring/helm-values/alertmanager-values.yaml \
+  https://raw.githubusercontent.com/gabrielrosinski/devops-course-project/main/monitoring/helm-values/alertmanager-values.yaml
+
+# Download standalone monitoring configs
+echo "📥 Downloading monitoring configurations..."
+curl -fsSL -o /home/ubuntu/deploy_config/monitoring/standalone/prometheus-alerts.yaml \
+  https://raw.githubusercontent.com/gabrielrosinski/devops-course-project/main/monitoring/standalone/prometheus-alerts.yaml
+
+curl -fsSL -o /home/ubuntu/deploy_config/monitoring/standalone/grafana-dashboard.yaml \
+  https://raw.githubusercontent.com/gabrielrosinski/devops-course-project/main/monitoring/standalone/grafana-dashboard.yaml
+
+curl -fsSL -o /home/ubuntu/deploy_config/monitoring/standalone/servicemonitor.yaml \
+  https://raw.githubusercontent.com/gabrielrosinski/devops-course-project/main/monitoring/standalone/servicemonitor.yaml
+
+# Download ArgoCD application manifest
+echo "📥 Downloading ArgoCD configuration..."
+curl -fsSL -o /home/ubuntu/deploy_config/argocd/argocd.yaml \
+  https://raw.githubusercontent.com/gabrielrosinski/devops-course-project/main/argocd/argocd.yaml
+
+# Set ownership
+chown -R ubuntu:ubuntu /home/ubuntu/deploy-apps.sh /home/ubuntu/deploy_config
+
+echo "✅ All deployment files downloaded to /home/ubuntu/deploy_config"
+echo "   Files ready:"
+echo "   - deploy-apps.sh"
+echo "   - 2 Helm values files"
+echo "   - 3 monitoring configs"
+echo "   - 1 ArgoCD manifest"
 
 # =============================================================================
 # Completion Message

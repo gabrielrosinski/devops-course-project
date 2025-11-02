@@ -48,19 +48,15 @@ fi
 echo "✅ Pre-flight checks passed"
 echo ""
 
-# Clone or update the repository
-if [ ! -d "/home/ubuntu/devops-course-project" ]; then
-  echo "📥 Cloning QuakeWatch repository..."
-  cd /home/ubuntu
-  git clone https://github.com/gabrielrosinski/devops-course-project.git
-  cd devops-course-project
-else
-  echo "✅ Repository already exists, updating..."
-  cd /home/ubuntu/devops-course-project
-  git pull origin main || echo "⚠️  Could not update repository"
+# Verify deployment config files exist
+if [ ! -d "/home/ubuntu/deploy_config" ]; then
+  echo "❌ Deployment config directory not found at /home/ubuntu/deploy_config"
+  echo "   This should have been created by user-data.sh during instance initialization."
+  echo "   Please check cloud-init logs: sudo cat /var/log/cloud-init-output.log"
+  exit 1
 fi
 
-echo "✅ Repository ready"
+echo "✅ Deployment config files ready at /home/ubuntu/deploy_config"
 echo ""
 
 # =============================================================================
@@ -92,7 +88,7 @@ if ! helm list -n monitoring | grep -q kube-prometheus-stack; then
 
   helm install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
     --namespace monitoring \
-    --values /home/ubuntu/devops-course-project/monitoring/helm-values/prometheus-minimal-values.yaml \
+    --values /home/ubuntu/deploy_config/monitoring/helm-values/prometheus-minimal-values.yaml \
     --wait --timeout=10m
 
   echo "✅ Minimal Prometheus & Grafana installed successfully"
@@ -116,7 +112,20 @@ done
 
 if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
   echo "⚠️  Prometheus CRDs not ready after 60 seconds"
-  echo "   Continuing anyway - you may need to apply monitoring resources later"
+  echo "   Skipping monitoring resource deployment - you may need to apply them manually later"
+else
+  # Apply Prometheus monitoring configurations
+  echo "📊 Applying Prometheus monitoring configurations..."
+
+  if [ -f "/home/ubuntu/deploy_config/monitoring/standalone/prometheus-alerts.yaml" ]; then
+    kubectl apply -f /home/ubuntu/deploy_config/monitoring/standalone/prometheus-alerts.yaml
+    echo "✅ Prometheus alert rules applied"
+  fi
+
+  if [ -f "/home/ubuntu/deploy_config/monitoring/standalone/grafana-dashboard.yaml" ]; then
+    kubectl apply -f /home/ubuntu/deploy_config/monitoring/standalone/grafana-dashboard.yaml
+    echo "✅ Grafana dashboard applied"
+  fi
 fi
 
 echo ""
@@ -155,13 +164,10 @@ echo ""
 echo "📦 [3/3] Deploying QuakeWatch Application..."
 echo "-------------------------------------------------------------"
 
-# Ensure we're in the repository directory
-cd /home/ubuntu/devops-course-project
-
 # Apply ArgoCD application manifest
-if [ -f "argocd/argocd.yaml" ]; then
+if [ -f "/home/ubuntu/deploy_config/argocd/argocd.yaml" ]; then
   echo "📄 Deploying application via ArgoCD..."
-  kubectl apply -f argocd/argocd.yaml
+  kubectl apply -f /home/ubuntu/deploy_config/argocd/argocd.yaml
 
   echo "⏳ Waiting for ArgoCD to sync and deploy the application..."
   sleep 5
@@ -182,10 +188,17 @@ if [ -f "argocd/argocd.yaml" ]; then
   if [ $RETRY_COUNT -eq $MAX_RETRIES ]; then
     echo "⚠️  Service not found after 120 seconds"
     echo "   Check ArgoCD sync status: kubectl get application earthquake-app -n argocd"
+  else
+    # Apply ServiceMonitor after app is deployed
+    echo "📊 Applying ServiceMonitor for QuakeWatch app..."
+    if [ -f "/home/ubuntu/deploy_config/monitoring/standalone/servicemonitor.yaml" ]; then
+      kubectl apply -f /home/ubuntu/deploy_config/monitoring/standalone/servicemonitor.yaml
+      echo "✅ ServiceMonitor applied - Prometheus will now scrape app metrics"
+    fi
   fi
 else
-  echo "⚠️  argocd/argocd.yaml not found. Skipping application deployment."
-  echo "   Please ensure the repository structure is correct."
+  echo "⚠️  argocd.yaml not found at /home/ubuntu/deploy_config/argocd/argocd.yaml"
+  echo "   Skipping application deployment."
 fi
 
 echo ""

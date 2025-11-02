@@ -1,12 +1,27 @@
-# Terraform Configuration for K3s on AWS
+# Terraform Infrastructure - K3s on AWS
 
-Complete infrastructure-as-code setup for deploying K3s (lightweight Kubernetes) on AWS EC2 with proper VPC, IAM, and security configurations.
+Complete Infrastructure-as-Code configuration for deploying a production-ready K3s Kubernetes cluster on AWS EC2 with monitoring, GitOps, and security best practices.
+
+## 📋 Table of Contents
+
+- [Architecture Overview](#architecture-overview)
+- [Resources Created](#resources-created)
+- [Prerequisites](#prerequisites)
+- [Quick Start](#quick-start)
+- [Accessing Services](#accessing-services)
+- [Deployment Issues & Solutions](#deployment-issues--solutions)
+- [File Structure](#file-structure)
+- [Troubleshooting](#troubleshooting)
+- [Cost Management](#cost-management)
+
+---
 
 ## Architecture Overview
 
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                      AWS Cloud                          │
+│                    Region: us-east-1                    │
 │                                                         │
 │  ┌───────────────────────────────────────────────────┐ │
 │  │              VPC (10.0.0.0/16)                    │ │
@@ -14,12 +29,15 @@ Complete infrastructure-as-code setup for deploying K3s (lightweight Kubernetes)
 │  │  ┌─────────────────┐  ┌─────────────────┐        │ │
 │  │  │ Public Subnet 1 │  │ Public Subnet 2 │        │ │
 │  │  │  (10.0.1.0/24)  │  │  (10.0.2.0/24)  │        │ │
+│  │  │   AZ: us-east-1a│  │   AZ: us-east-1b│        │ │
 │  │  │                 │  │                 │        │ │
 │  │  │  ┌───────────┐  │  │                 │        │ │
-│  │  │  │   EC2     │  │  │  (Future nodes) │        │ │
-│  │  │  │ t2.micro  │  │  │                 │        │ │
+│  │  │  │   EC2     │  │  │  (Reserved for │        │ │
+│  │  │  │ t3a.medium│  │  │   worker nodes) │        │ │
+│  │  │  │ 2vCPU 4GB │  │  │                 │        │ │
 │  │  │  │           │  │  │                 │        │ │
 │  │  │  │ K3s Server│  │  │                 │        │ │
+│  │  │  │  + Apps   │  │  │                 │        │ │
 │  │  │  └─────┬─────┘  │  │                 │        │ │
 │  │  │        │        │  │                 │        │ │
 │  │  └────────┼────────┘  └─────────────────┘        │ │
@@ -33,52 +51,91 @@ Complete infrastructure-as-code setup for deploying K3s (lightweight Kubernetes)
                            │
                   ┌────────▼────────┐
                   │    Internet     │
-                  │   (Your PC)     │
+                  │   Your Browser  │
+                  │                 │
+                  │ Direct Access:  │
+                  │ • App: 32000    │
+                  │ • Grafana: 30300│
+                  │ • ArgoCD: 30443 │
+                  │ • Prom: 30900   │
                   └─────────────────┘
 ```
 
+---
+
 ## Resources Created
 
-| Resource | Type | Purpose | Cost |
-|----------|------|---------|------|
-| VPC | Network | Isolated network environment | FREE |
-| Internet Gateway | Network | Internet connectivity | FREE |
-| 2 Public Subnets | Network | High availability zones | FREE |
-| Route Tables | Network | Traffic routing | FREE |
-| Security Group | Security | Firewall rules | FREE |
-| IAM Role + Profile | Security | AWS permissions | FREE |
-| EC2 Instance | Compute | K3s server node | FREE (t2.micro) |
-| EBS Volume | Storage | 20 GB disk | FREE (30 GB limit) |
+### Networking
 
-**Total Monthly Cost: $0** (within free tier limits)
+| Resource | Configuration | Purpose |
+|----------|--------------|---------|
+| VPC | 10.0.0.0/16 | Isolated network environment |
+| Internet Gateway | 1 | Internet connectivity |
+| Public Subnet 1 | 10.0.1.0/24 (us-east-1a) | K3s server node |
+| Public Subnet 2 | 10.0.2.0/24 (us-east-1b) | Future worker nodes |
+| Route Table | Public routes | Traffic routing to IGW |
+
+### Compute
+
+| Resource | Specification | Details |
+|----------|--------------|---------|
+| EC2 Instance | t3a.medium | 2 vCPU, 4 GB RAM |
+| EBS Volume | 20 GB gp2 | Root volume |
+| AMI | Ubuntu 24.04 LTS | ami-0360c520857e3138f |
+
+### Security
+
+| Resource | Configuration | Purpose |
+|----------|--------------|---------|
+| Security Group | k3s-node-sg | Firewall rules |
+| IAM Role | k3s-node-role | EC2 permissions |
+| IAM Instance Profile | k3s-node-profile | Attach role to instance |
+
+### Security Group Rules
+
+| Port Range | Protocol | Source | Purpose |
+|-----------|----------|--------|---------|
+| 22 | TCP | Your IP | SSH access |
+| 6443 | TCP | Your IP | K3s API server |
+| 80 | TCP | 0.0.0.0/0 | HTTP |
+| 443 | TCP | 0.0.0.0/0 | HTTPS |
+| **30000-32767** | **TCP** | **0.0.0.0/0** | **NodePort services** |
+| 8472 | UDP | VPC CIDR | Flannel VXLAN |
+| 10250 | TCP | VPC CIDR | Kubelet API |
+
+---
 
 ## Prerequisites
 
 ### 1. AWS Account Setup
-- [ ] AWS account with free tier eligibility
-- [ ] AWS CLI installed and configured
-  ```bash
-  aws configure
-  # Enter: Access Key ID, Secret Access Key, Region (us-east-1), Output format (json)
-  ```
-- [ ] Verify access:
-  ```bash
-  aws sts get-caller-identity
-  ```
 
-### 2. SSH Key Pair
-Create an EC2 key pair for SSH access:
+```bash
+# Install AWS CLI
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+unzip awscliv2.zip
+sudo ./aws/install
 
-**Option A: AWS Console**
-1. Go to AWS Console > EC2 > Key Pairs
-2. Click "Create Key Pair"
-3. Name: `quakewatch-key`
-4. Type: RSA
-5. Format: `.pem`
-6. Download and save securely
-7. Set permissions: `chmod 400 ~/Downloads/quakewatch-key.pem`
+# Configure credentials
+aws configure
+# Enter: Access Key ID, Secret Access Key, Region (us-east-1), Output (json)
 
-**Option B: AWS CLI**
+# Verify access
+aws sts get-caller-identity
+```
+
+### 2. Create SSH Key Pair
+
+**Option A - AWS Console:**
+1. EC2 Console → Key Pairs → Create Key Pair
+2. Name: `quakewatch-key`
+3. Type: RSA, Format: .pem
+4. Download and secure:
+   ```bash
+   chmod 400 ~/Downloads/quakewatch-key.pem
+   mv ~/Downloads/quakewatch-key.pem ~/.ssh/
+   ```
+
+**Option B - AWS CLI:**
 ```bash
 aws ec2 create-key-pair \
   --key-name quakewatch-key \
@@ -88,10 +145,12 @@ aws ec2 create-key-pair \
 chmod 400 ~/.ssh/quakewatch-key.pem
 ```
 
-### 3. Terraform Installation
+### 3. Install Terraform
+
 **macOS:**
 ```bash
-brew install terraform
+brew tap hashicorp/tap
+brew install hashicorp/tap/terraform
 ```
 
 **Linux:**
@@ -101,174 +160,383 @@ unzip terraform_1.6.0_linux_amd64.zip
 sudo mv terraform /usr/local/bin/
 ```
 
-**Windows:**
-Download from [terraform.io](https://www.terraform.io/downloads)
-
-Verify installation:
+**Verify:**
 ```bash
 terraform version
 ```
 
-## Configuration
+---
 
-### 1. Update terraform.tfvars
+## Quick Start
 
-Edit `terraform.tfvars` and replace these values:
+### 1. Configure Variables
+
+Edit `terraform.tfvars`:
 
 ```hcl
 # Your AWS SSH key pair name
-key_name = "quakewatch-key"  # Replace with your actual key name
+key_name = "quakewatch-key"
 
 # Your public IP address (find it: curl ifconfig.me)
-allowed_ssh_cidr = "203.0.113.42/32"  # Replace with YOUR IP
+# IMPORTANT: Use YOUR IP, not 0.0.0.0/0!
+allowed_ssh_cidr = "203.0.113.42/32"
 
-# Generate a secure K3s token (run: openssl rand -hex 32)
-k3s_token = "abc123..."  # Replace with random token
+# Generate secure token: openssl rand -hex 32
+k3s_token = "your-secure-random-token-here"
+
+# Optional: Change instance type
+# instance_type = "t3a.medium"  # Default
+
+# Optional: Change region
+# aws_region = "us-east-1"  # Default
 ```
 
-### 2. Generate K3s Token
+### 2. Deploy Infrastructure
 
 ```bash
-# Generate a secure random token
-openssl rand -hex 32
-
-# Copy the output to terraform.tfvars
-```
-
-## Deployment Steps
-
-### Step 1: Initialize Terraform
-
-```bash
-cd terraform
+# Initialize Terraform
 terraform init
-```
 
-This downloads required AWS provider plugins.
-
-### Step 2: Validate Configuration
-
-```bash
+# Validate configuration
 terraform validate
-```
 
-Check for syntax errors.
-
-### Step 3: Plan Infrastructure
-
-```bash
+# Preview changes
 terraform plan
-```
 
-Review what will be created:
-- 1 VPC
-- 2 Subnets
-- 1 Internet Gateway
-- 1 Route Table
-- 1 Security Group
-- 1 IAM Role + Profile
-- 1 EC2 Instance
-
-### Step 4: Apply Configuration
-
-```bash
+# Deploy infrastructure
 terraform apply
+# Type 'yes' when prompted
+# Wait 5-10 minutes for:
+# - AWS resources creation
+# - EC2 instance boot
+# - K3s installation via user-data
+# - Configuration files download
 ```
 
-- Type `yes` when prompted
-- Wait 5-10 minutes for:
-  - AWS resources to be created
-  - EC2 instance to boot
-  - K3s to install (via user-data script)
-
-### Step 5: Get Outputs
+### 3. Get Outputs
 
 ```bash
 # View all outputs
 terraform output
 
-# View specific output
+# Get specific values
 terraform output instance_public_ip
-terraform output helpful_commands
+terraform output k3s_api_endpoint
 ```
 
-## Accessing Your K3s Cluster
+Example output:
+```
+instance_public_ip = "52.87.182.190"
+instance_state = "running"
+k3s_api_endpoint = "https://52.87.182.190:6443"
+```
 
-### Option 1: SSH to Instance
+### 4. Deploy Applications
 
 ```bash
-# Replace with your key name and IP (from terraform output)
-ssh -i ~/.ssh/quakewatch-key.pem ubuntu@<INSTANCE_PUBLIC_IP>
+# SSH to instance
+ssh -i ~/.ssh/quakewatch-key.pem ubuntu@$(terraform output -raw instance_public_ip)
 
-# Once connected, verify K3s:
+# Run deployment script (auto-downloaded during initialization)
+./deploy-apps.sh
+```
+
+The script automatically installs:
+- ✅ Prometheus & Grafana (with NodePort on 30300, 30900)
+- ✅ ArgoCD (with NodePort on 30443/30080)
+- ✅ QuakeWatch application (NodePort 32000)
+
+---
+
+## Accessing Services
+
+**All services use NodePort - direct browser access, no port-forwarding!**
+
+### Service Access URLs
+
+| Service | URL | Port | Credentials |
+|---------|-----|------|-------------|
+| **QuakeWatch App** | `http://<PUBLIC_IP>:32000` | 32000 | None |
+| **ArgoCD (HTTPS)** | `https://<PUBLIC_IP>:30443` | 30443 | admin / (see below) |
+| **ArgoCD (HTTP)** | `http://<PUBLIC_IP>:30080` | 30080 | admin / (see below) |
+| **Grafana** | `http://<PUBLIC_IP>:30300` | 30300 | admin / (see below) |
+| **Prometheus** | `http://<PUBLIC_IP>:30900` | 30900 | None |
+
+### Get Credentials
+
+```bash
+# SSH to instance first
+ssh -i ~/.ssh/quakewatch-key.pem ubuntu@<PUBLIC_IP>
+
+# ArgoCD password
+kubectl get secret argocd-initial-admin-secret -n argocd -o jsonpath="{.data.password}" | base64 -d && echo
+
+# Grafana password
+kubectl get secret kube-prometheus-stack-grafana -n monitoring -o jsonpath="{.data.admin-password}" | base64 -d && echo
+```
+
+### Remote kubectl Access (Optional)
+
+```bash
+# Copy kubeconfig from instance
+scp -i ~/.ssh/quakewatch-key.pem \
+  ubuntu@<PUBLIC_IP>:/home/ubuntu/.kube/config \
+  ~/.kube/quakewatch-config
+
+# Update server IP
+export PUBLIC_IP=$(terraform output -raw instance_public_ip)
+sed -i "s|https://127.0.0.1:6443|https://$PUBLIC_IP:6443|g" ~/.kube/quakewatch-config
+
+# Use config
+export KUBECONFIG=~/.kube/quakewatch-config
 kubectl get nodes
 kubectl get pods -A
 ```
 
-### Option 2: Remote kubectl Access
+---
 
-```bash
-# Copy kubeconfig to your local machine
-scp -i ~/.ssh/quakewatch-key.pem ubuntu@<IP>:/etc/rancher/k3s/k3s.yaml ~/.kube/quakewatch-config
+## Deployment Issues & Solutions
 
-# Update server IP in config
-sed -i 's|https://127.0.0.1:6443|https://<IP>:6443|g' ~/.kube/quakewatch-config
+During development and testing, we encountered several issues. Here's what we learned:
 
-# Use the config
-export KUBECONFIG=~/.kube/quakewatch-config
-kubectl get nodes
+### 1. **Grafana Resource Constraints**
+
+**Problem:**
+- Grafana pod stuck at 2/3 ready
+- Database locked errors in logs
+- Readiness probe timeouts
+
+**Root Cause:**
+- Initial memory limits (64Mi/128Mi) were too low for Grafana 12.2.1
+- Grafana requires more memory for API server and dashboard provisioning
+
+**Solution:**
+- Increased memory to 256Mi request / 512Mi limit
+- File: `monitoring/helm-values/prometheus-minimal-values.yaml`
+
+```yaml
+grafana:
+  resources:
+    requests:
+      memory: 256Mi  # Was: 64Mi
+      cpu: 100m
+    limits:
+      memory: 512Mi  # Was: 128Mi
+      cpu: 200m
 ```
 
-## Deploying QuakeWatch Application
+### 2. **Prometheus Operator Admission Webhook Issue**
 
-Once K3s is running, SSH to your instance and run the deployment script:
+**Problem:**
+- Prometheus Operator tried to mount webhook secrets
+- Pod crashes due to missing webhook certificates
 
-```bash
-# SSH to instance
-ssh -i ~/.ssh/quakewatch-key.pem ubuntu@<INSTANCE_PUBLIC_IP>
+**Root Cause:**
+- Setting `admissionWebhooks.enabled: false` wasn't sufficient
+- Webhook patch job still attempted to run
 
-# Run the deployment script (included in the repo)
-./deploy-apps.sh
+**Solution:**
+- Explicitly disabled all webhook components
+- File: `monitoring/helm-values/prometheus-minimal-values.yaml`
+
+```yaml
+prometheusOperator:
+  admissionWebhooks:
+    enabled: false
+    patch:
+      enabled: false  # Added
+  tls:
+    enabled: false    # Added
 ```
 
-The script will automatically:
-1. Install Prometheus & Grafana monitoring stack
-2. Install ArgoCD for GitOps deployment
-3. Deploy QuakeWatch application via ArgoCD
-4. Display access credentials and URLs
+### 3. **EC2 Metadata Service (IMDSv2) - Empty Public IP**
 
-### Manual Deployment (Alternative)
+**Problem:**
+- Deploy script showed empty IP in output: `https://:8081`
+- `$PUBLIC_IP` variable was empty
 
-If you prefer manual deployment:
+**Root Cause:**
+- AWS EC2 instances now require IMDSv2 tokens by default
+- Old IMDSv1 curl command failed silently
+
+**Solution:**
+- Updated script to fetch IMDSv2 token first
+- Added fallback to IMDSv1 for older instances
+- File: `terraform/deploy-apps.sh`
 
 ```bash
-# Apply Kubernetes manifests
-kubectl apply -f ../k8s/
+# Get IMDSv2 token
+TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" \
+  -H "X-aws-ec2-metadata-token-ttl-seconds: 21600" -s)
 
-# Check deployment
-kubectl get deployments
-kubectl get pods
-kubectl get services
-
-# Get service URL (update port based on your service)
-terraform output quakewatch_nodeport_url
+# Use token to fetch metadata
+PUBLIC_IP=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" -s \
+  http://169.254.169.254/latest/meta-data/public-ipv4)
 ```
+
+### 4. **Port-Forward Access Issues**
+
+**Problem:**
+- Users needed to run `kubectl port-forward` for each service
+- Ports 3000, 8081, 9090 not in security group
+- Port-forward with `--address 0.0.0.0` had binding issues
+
+**Root Cause:**
+- Services using ClusterIP (internal only)
+- Custom ports not allowed in security group
+- Only NodePort range (30000-32767) was open
+
+**Solution:**
+- Configured all services to use NodePort
+- NodePort range already allowed in security group
+- No infrastructure changes needed
+
+**Files Modified:**
+- `monitoring/helm-values/prometheus-minimal-values.yaml`
+- `argocd/argocd-nodeport.yaml` (new file)
+- `terraform/deploy-apps.sh` (apply NodePort configs)
+
+### 5. **Hardcoded Instance Type in Messages**
+
+**Problem:**
+- Script always showed "Installing for t2.micro" regardless of actual instance
+
+**Root Cause:**
+- Instance type was hardcoded in deploy script
+
+**Solution:**
+- Pass instance_type from Terraform through user-data to deploy script
+
+**Files Modified:**
+- `terraform/modules/ec2/main.tf` - added instance_type to templatefile
+- `terraform/user-data.sh` - receives and exports INSTANCE_TYPE
+- `terraform/deploy-apps.sh` - displays actual instance type
+
+---
+
+## File Structure
+
+```
+terraform/
+├── main.tf                  # Root module - orchestrates all modules
+├── variables.tf             # Variable definitions with validation
+├── terraform.tfvars         # Variable values (NOT committed to Git)
+├── outputs.tf               # Output definitions
+├── provider.tf              # AWS provider configuration
+│
+├── modules/                 # Reusable Terraform modules
+│   ├── vpc/                # VPC, subnets, IGW, route tables
+│   │   ├── main.tf
+│   │   ├── variables.tf
+│   │   └── outputs.tf
+│   ├── security/           # Security groups
+│   │   ├── main.tf
+│   │   ├── variables.tf
+│   │   └── outputs.tf
+│   ├── iam/                # IAM roles and policies
+│   │   ├── main.tf
+│   │   ├── variables.tf
+│   │   └── outputs.tf
+│   └── ec2/                # EC2 instance configuration
+│       ├── main.tf
+│       ├── variables.tf
+│       └── outputs.tf
+│
+├── user-data.sh            # EC2 initialization script (runs on boot)
+│                           # Installs: K3s, Helm, kubectl
+│                           # Downloads: deployment configs
+│
+├── deploy-apps.sh          # Application deployment script
+│                           # Run via SSH after instance is ready
+│                           # Installs: Prometheus, Grafana, ArgoCD, App
+│
+└── README.md               # This file
+
+Note: .tfstate files and .terraform/ are auto-ignored by root .gitignore
+```
+
+---
 
 ## Troubleshooting
 
 ### K3s Installation Logs
 
 ```bash
-ssh -i ~/.ssh/quakewatch-key.pem ubuntu@<IP>
+# SSH to instance
+ssh -i ~/.ssh/quakewatch-key.pem ubuntu@<PUBLIC_IP>
+
+# View installation log
 cat /var/log/k3s-install.log
-```
 
-### K3s Service Status
+# Check cloud-init logs
+sudo cat /var/log/cloud-init-output.log
 
-```bash
-ssh -i ~/.ssh/quakewatch-key.pem ubuntu@<IP>
+# K3s service status
 sudo systemctl status k3s
 sudo journalctl -u k3s -f
+```
+
+### Verify K3s Cluster
+
+```bash
+# Check nodes
+kubectl get nodes -o wide
+
+# Check all pods
+kubectl get pods -A
+
+# Check services
+kubectl get svc -A
+
+# Check deployments
+kubectl get deployments -A
+```
+
+### Application Deployment Issues
+
+```bash
+# Check if deployment script completed
+ls -la ~/deploy-apps.sh
+ls -la ~/deploy_config/
+
+# Re-run deployment
+./deploy-apps.sh
+
+# Check ArgoCD application sync status
+kubectl get application -n argocd
+kubectl describe application earthquake-app -n argocd
+```
+
+### Grafana Not Loading
+
+```bash
+# Check pod status
+kubectl get pods -n monitoring | grep grafana
+
+# View logs
+kubectl logs -n monitoring -l app.kubernetes.io/name=grafana --tail=100
+
+# Check resource usage
+kubectl top pod -n monitoring
+
+# Restart Grafana
+kubectl rollout restart deployment/kube-prometheus-stack-grafana -n monitoring
+```
+
+### Networking Issues
+
+```bash
+# Test NodePort services from instance
+curl http://localhost:32000        # QuakeWatch app
+curl http://localhost:30300        # Grafana
+curl http://localhost:30900        # Prometheus
+
+# Check security group
+aws ec2 describe-security-groups \
+  --group-ids $(terraform output -raw security_group_id)
+
+# Verify public IP
+curl http://169.254.169.254/latest/meta-data/public-ipv4
 ```
 
 ### Terraform State Issues
@@ -277,95 +545,170 @@ sudo journalctl -u k3s -f
 # View current state
 terraform show
 
-# List resources
+# List all resources
 terraform state list
 
-# Remove stuck resource
+# View specific resource
+terraform state show module.ec2.aws_instance.k3s_server
+
+# Refresh state
+terraform refresh
+
+# Remove stuck resource (use with caution!)
 terraform state rm aws_instance.k3s_server
 ```
 
+---
+
 ## Cost Management
 
-### Monitor AWS Free Tier Usage
+### Current Configuration Cost
 
-1. AWS Console > Billing > Free Tier
-2. Check usage for:
-   - EC2 (750 hours/month limit)
-   - EBS (30 GB limit)
-   - Data transfer (15 GB/month out)
+**Instance**: t3a.medium (2 vCPU, 4GB RAM)
+- **Hourly**: ~$0.0376/hour
+- **Monthly**: ~$27.41/month (730 hours)
+- **Daily**: ~$0.90/day
+- **NOT included in AWS free tier**
 
-### Stop Instance (Save Hours)
+**EBS Storage**: 20 GB gp2
+- **Monthly**: ~$2.00/month
+- **Free tier**: First 30 GB free for 12 months
 
+**Data Transfer**:
+- **Inbound**: FREE
+- **Outbound**: First 100 GB/month FREE
+- After free tier: $0.09/GB
+
+**Total Estimated Monthly Cost**: ~$29-30/month
+
+### Free Tier Alternative
+
+To use free tier, change instance type to t2.micro:
+
+```hcl
+# terraform.tfvars
+instance_type = "t2.micro"  # 1 vCPU, 1 GB RAM (free tier)
+```
+
+**Warning**: t2.micro may not have enough resources for all services to run smoothly.
+
+### Cost Optimization
+
+**1. Stop Instance When Not in Use:**
 ```bash
-# Stop instance (keeps data, stops hourly billing)
+# Stop instance (data preserved, billing stops)
 aws ec2 stop-instances --instance-ids $(terraform output -raw instance_id)
 
-# Start instance later
+# Start later
 aws ec2 start-instances --instance-ids $(terraform output -raw instance_id)
+
+# Check status
+aws ec2 describe-instances --instance-ids $(terraform output -raw instance_id) \
+  --query 'Reservations[0].Instances[0].State.Name'
 ```
 
-### Destroy Everything
-
+**2. Destroy EC2 Only (Keep VPC):**
 ```bash
-# Remove all resources (irreversible!)
+# Destroy only the EC2 instance
+terraform destroy -target=module.ec2
+
+# Recreate later
+terraform apply -target=module.ec2
+```
+
+**3. Destroy Everything:**
+```bash
+# Remove all resources
 terraform destroy
+# Type 'yes' to confirm
 ```
 
-Type `yes` to confirm. This deletes:
-- EC2 instance and disk
-- VPC and networking
-- Security groups
-- IAM roles
-
-## File Structure
-
+**4. Set Billing Alerts:**
+```bash
+# AWS Console → Billing → Budgets → Create Budget
+# Set threshold: $10, $25, $50
+# Get email alerts before overspending
 ```
-terraform/
-├── provider.tf          # AWS provider configuration
-├── vpc.tf               # VPC, subnets, IGW, route tables
-├── security.tf          # Security groups (firewall rules)
-├── iam.tf               # IAM roles and policies
-├── ec2.tf               # EC2 instance configuration
-├── variables.tf         # Variable definitions
-├── terraform.tfvars     # Variable values (DO NOT COMMIT!)
-├── output.tf            # Output definitions
-├── user-data.sh         # K3s + Helm installation script (runs on boot)
-├── deploy-apps.sh       # Application deployment script (run via SSH)
-└── README.md            # This file
 
-Note: Terraform-specific files (*.tfstate, *.tfvars, .terraform/) are
-ignored by the root .gitignore file.
-```
+---
 
 ## Security Best Practices
 
-✅ **DO:**
-- Keep `terraform.tfvars` out of Git (handled by root `.gitignore`)
-- Use your specific IP for `allowed_ssh_cidr` (not 0.0.0.0/0)
-- Rotate your K3s token periodically
-- Enable MFA on your AWS account
-- Use AWS SSM Session Manager as backup access
+### ✅ DO:
 
-❌ **DON'T:**
-- Share your SSH private key
-- Commit `.tfstate` files to Git (auto-ignored by root `.gitignore`)
-- Open SSH to 0.0.0.0/0 (entire internet)
-- Use weak K3s tokens
+- Use your specific IP for `allowed_ssh_cidr` (not 0.0.0.0/0)
+- Keep `terraform.tfvars` out of version control (already in .gitignore)
+- Use strong, random K3s tokens (`openssl rand -hex 32`)
+- Enable MFA on AWS account
+- Rotate SSH keys and K3s tokens periodically
+- Review security group rules regularly
+- Use AWS Systems Manager Session Manager as backup access
+- Enable CloudTrail for audit logging
+
+### ❌ DON'T:
+
+- Share SSH private keys
+- Commit `.tfstate` files to Git (already in .gitignore)
+- Open SSH (port 22) to 0.0.0.0/0
+- Use weak or predictable K3s tokens
+- Leave unused resources running
+- Store AWS credentials in code
+- Use root AWS account for daily operations
+
+---
+
+## Advanced Configuration
+
+### Change Instance Type
+
+```hcl
+# terraform.tfvars
+instance_type = "t3a.small"    # 2 vCPU, 2 GB RAM
+# instance_type = "t3a.medium"  # 2 vCPU, 4 GB RAM (current)
+# instance_type = "t3a.large"   # 2 vCPU, 8 GB RAM
+```
+
+### Change Region
+
+```hcl
+# terraform.tfvars
+aws_region = "us-west-2"
+
+# IMPORTANT: Also update AMI ID for new region
+# Find AMIs: https://cloud-images.ubuntu.com/locator/ec2/
+ami_id = "ami-xxxxxxxxx"  # Ubuntu 24.04 LTS for us-west-2
+```
+
+### Add Worker Nodes
+
+Terraform is currently configured for a single-node cluster. To add workers, modify:
+1. `modules/ec2/main.tf` - add count parameter
+2. `variables.tf` - add worker node configuration
+3. `user-data.sh` - change from `server` to `agent` mode for workers
+
+---
 
 ## Next Steps
 
-1. **Deploy QuakeWatch**: Apply your Kubernetes manifests
-2. **Set up DNS**: Point domain to instance IP
-3. **Add SSL**: Use Let's Encrypt with cert-manager
-4. **Scale**: Add worker nodes by adjusting configuration
-5. **Monitor**: Set up CloudWatch alarms for CPU/memory
+1. **Deploy Applications**: Run `./deploy-apps.sh` on EC2 instance
+2. **Set up Custom Domain**: Point DNS A record to instance IP
+3. **Add TLS/SSL**: Use cert-manager with Let's Encrypt
+4. **Configure Backups**: Set up automated snapshots
+5. **Add Monitoring Alerts**: Configure Alertmanager for notifications
+6. **Scale Horizontally**: Add worker nodes for high availability
 
-## Support
+---
 
-- **Terraform Docs**: https://registry.terraform.io/providers/hashicorp/aws/latest/docs
-- **K3s Docs**: https://docs.k3s.io/
+## Support & Resources
+
+- **Main README**: See [../README.md](../README.md) for application deployment guide
+- **Terraform AWS Provider**: https://registry.terraform.io/providers/hashicorp/aws/latest/docs
+- **K3s Documentation**: https://docs.k3s.io/
 - **AWS Free Tier**: https://aws.amazon.com/free/
+- **Terraform Best Practices**: https://www.terraform-best-practices.com/
+
+---
 
 ## License
 
-This configuration is part of the QuakeWatch DevOps learning project.
+This infrastructure configuration is part of the QuakeWatch DevOps learning project demonstrating production-ready cloud infrastructure patterns.

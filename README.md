@@ -2,6 +2,10 @@
 
 A Flask-based web application that displays real-time and historical earthquake data from the USGS API, containerized with Docker and deployed to Kubernetes using Helm.
 
+> 📌 **Deployment Options:**
+> - **Local Development** (this guide): Deploy to local k3s/Minikube cluster
+> - **AWS Production**: See [README-AWS.md](README-AWS.md) for AWS deployment with Terraform
+
 ## 🚀 Features
 
 - 📊 Real-time earthquake data visualization

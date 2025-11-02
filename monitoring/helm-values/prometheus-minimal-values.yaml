@@ -55,3 +55,9 @@ prometheusOperator:
       cpu: 100m
   admissionWebhooks:
     enabled: false  # Disable admission webhooks (causes issues on small clusters)
+    # Patch to ensure operator doesn't mount webhook secrets
+    patch:
+      enabled: false
+  # Disable TLS verification to avoid webhook secret dependency
+  tls:
+    enabled: false
